@@ -3915,12 +3915,32 @@ unsigned int att_meshOn = 0;
 //reset total waypoints
 total_waypoints = 0;
 
+if (g_online_mode) {
+    char dbg[96];
+    sprintf(dbg, "LB_ENTER %s", filename);
+    MNET_LOG_INFO(dbg);
+}
+
 stream = jo_fs_read_file(filename, &length);
+
+if (g_online_mode) {
+    char dbg[96];
+    sprintf(dbg, "LB_READ_OK len=%d str=%p", length, (void*)stream);
+    MNET_LOG_INFO(dbg);
+}
+
 currentAddress = startAddress;
 
 jo_nbg2_printf(0, line, "LOADING....:                    ");
 ///total models
 model_total = jo_swap_endian_uint(*((unsigned int *)(stream)));
+
+if (g_online_mode) {
+    char dbg[96];
+    sprintf(dbg, "LB_MODELS=%u", model_total);
+    MNET_LOG_INFO(dbg);
+}
+
 //jo_nbg2_printf(0, line, "MODEL_TOTAL:         %d     ", model_total);
 //line++;
 nxt +=4;
