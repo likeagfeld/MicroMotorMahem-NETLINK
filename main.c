@@ -5423,10 +5423,16 @@ void		cpu_control(void)
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
 			{
-				const mnet_remote_state_t* rs = mnet_get_remote_state((uint8_t)p);
+				/* Map local slot p -> server-assigned net_player_id.
+				 * remote_states is keyed by net pid (set by server when it
+				 * broadcasts PLAYER_SYNC), not by slot. With 1H+1B, server
+				 * gives bot pid=2 but bot lives in players[1] locally —
+				 * looking up by slot=1 yields empty state and bot is invisible. */
+				uint8_t net_id = s_net_player_id[p];
+				const mnet_remote_state_t* rs;
+				if (net_id == MNET_INVALID_PLAYER_ID) continue;
+				rs = mnet_get_remote_state(net_id);
 				if (!rs) continue;
-				/* Hard-snap position + rotation. Cheap; matches passthrough
-				 * model where server is authoritative on race-state. */
 				players[p].x = rs->x;
 				players[p].y = rs->y;
 				players[p].z = rs->z;
@@ -5465,7 +5471,11 @@ void			my_gamepad(void)
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
 			{
-				int bits = mnet_get_remote_input((uint8_t)p);
+				/* Same pid mapping rule as PLAYER_SYNC consumer above. */
+				uint8_t net_id = s_net_player_id[p];
+				int bits;
+				if (net_id == MNET_INVALID_PLAYER_ID) continue;
+				bits = mnet_get_remote_input(net_id);
 				if (bits >= 0) mmm_apply_remote_input(p, (uint8_t)bits);
 			}
 		}
