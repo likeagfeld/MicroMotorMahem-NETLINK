@@ -11,22 +11,31 @@
  *
  * _sbrk hard-fails: if any stray reference to newlib's stock allocator
  * survives, we'd rather it return -1 than scribble random RAM.
+ *
+ * EVERY exported symbol below has __attribute__((used)) — without it,
+ * LTO sees no reference to these functions in the LTO unit (newlib's
+ * references come in later via the archive scan) and dead-code-
+ * eliminates them. The archive scanner then resolves the symbols from
+ * libc.a's lib_a-stdio.o instead, defeating the whole point of this
+ * file. ((used)) forces the symbol to survive LTO.
  */
 
 #include <stddef.h>
 #include <jo/jo.h>
 
-void *malloc(size_t size)
+#define KEEP __attribute__((used))
+
+KEEP void *malloc(size_t size)
 {
     return jo_malloc((unsigned int)size);
 }
 
-void free(void *ptr)
+KEEP void free(void *ptr)
 {
     if (ptr) jo_free(ptr);
 }
 
-void *calloc(size_t nmemb, size_t size)
+KEEP void *calloc(size_t nmemb, size_t size)
 {
     unsigned int total = (unsigned int)(nmemb * size);
     void *p = jo_malloc(total);
@@ -38,7 +47,7 @@ void *calloc(size_t nmemb, size_t size)
     return p;
 }
 
-void *realloc(void *ptr, size_t size)
+KEEP void *realloc(void *ptr, size_t size)
 {
     if (!ptr) return jo_malloc((unsigned int)size);
     if (size == 0) { jo_free(ptr); return NULL; }
@@ -58,31 +67,31 @@ void *realloc(void *ptr, size_t size)
 
 struct _reent;
 
-void *_malloc_r(struct _reent *r, size_t size)
+KEEP void *_malloc_r(struct _reent *r, size_t size)
 {
     (void)r;
     return malloc(size);
 }
 
-void _free_r(struct _reent *r, void *ptr)
+KEEP void _free_r(struct _reent *r, void *ptr)
 {
     (void)r;
     free(ptr);
 }
 
-void *_calloc_r(struct _reent *r, size_t nmemb, size_t size)
+KEEP void *_calloc_r(struct _reent *r, size_t nmemb, size_t size)
 {
     (void)r;
     return calloc(nmemb, size);
 }
 
-void *_realloc_r(struct _reent *r, void *ptr, size_t size)
+KEEP void *_realloc_r(struct _reent *r, void *ptr, size_t size)
 {
     (void)r;
     return realloc(ptr, size);
 }
 
-void *_sbrk(int incr)
+KEEP void *_sbrk(int incr)
 {
     (void)incr;
     return (void *)-1;

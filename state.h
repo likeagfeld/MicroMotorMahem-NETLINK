@@ -66,6 +66,12 @@ extern char      g_player_name_2[17];  /* P2 name (= P1 + "2" by default) */
 void mmm_set_game_state(uint8_t new_state);
 uint8_t mmm_get_game_state(void);
 
+/* Wrapper for transition_to_title_screen — restores TITLE.BIN + TITLE.TGA
+ * to xpdata_ / MAP_TILESET so the title screen's 3D background and menu
+ * text render correctly after any online state. Implemented in main.c
+ * where transition_to_title_screen and friends are in scope. */
+void mmm_back_to_title_screen(void);
+
 /*============================================================================
  * Returns Smpc port index of P2 controller, or -1 if absent.
  *============================================================================*/

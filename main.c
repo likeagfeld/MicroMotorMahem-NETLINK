@@ -47,7 +47,21 @@
 #include "net/saturn_uart16550.h"
 #include "net/modem.h"
 #include <stdlib.h>   /* srand for online race seed */
-#include <string.h>   /* strcmp for filename checks (replaces upstream pointer compares) */
+
+/* Inline filename-equal helper, deliberately NOT using strcmp.
+ *
+ * Pulling <string.h>/strcmp drags in newlib's lib_a-stdio.o reentrancy
+ * chain (_read_r -> _read -> ... -> _sbrk + _close + _write + ...). That
+ * chain bundles a newlib _sbrk that fights jo_engine's static heap and
+ * breaks boot — TITLE.BIN parsing freezes mid-attribute because writes
+ * end up in unmapped RAM. This avoids the entire newlib drag-in. */
+static int filename_eq_cars_bin(const char *f)
+{
+    if (!f) return 0;
+    return f[0]=='C' && f[1]=='A' && f[2]=='R' && f[3]=='S' &&
+           f[4]=='.' && f[5]=='B' && f[6]=='I' && f[7]=='N' &&
+           f[8]=='\0';
+}
 
 extern Sint8 SynchConst;
 Sint32 framerate;
@@ -123,6 +137,18 @@ net_transport_t g_saturn_transport = {
 
 /* state.h shims */
 void mmm_set_game_state(uint8_t new_state) { game.game_state = new_state; }
+
+/* Online -> title cleanup. Forwards to transition_to_title_screen which
+ * reloads TITLE.BIN (3D logo background) and TITLE.TGA (menu text tiles)
+ * — both of which get clobbered by online race CARS.BIN + track loads.
+ * Without this, the title screen renders with track geometry and broken
+ * menu text, and input doesn't appear to register because the menu
+ * sprites point at the wrong tile slots. */
+void mmm_back_to_title_screen(void) {
+    g_online_mode = false;
+    g_local_p2_active = false;
+    transition_to_title_screen();
+}
 uint8_t mmm_get_game_state(void)           { return game.game_state; }
 
 int mmm_get_p2_port(void)
@@ -202,6 +228,7 @@ extern void init_3d_planes(void);
 extern void init_1p_display(void);
 extern void load_car(int p, int car_id);
 extern void ztClearText(void);
+extern void transition_to_title_screen(void);
 extern Uint8 cam_mode;
 extern Uint8 saved_cam_mode;
 extern Uint8 current_players;
@@ -4046,7 +4073,7 @@ for (unsigned int s = 0; s< model_total; s++)
 			att_flip = jo_swap_endian_uint(*((unsigned int *)(stream+nxt)));
 			nxt+=4;
 			
-			if(strcmp(filename, "CARS.BIN") == 0)
+			if(filename_eq_cars_bin(filename))
 			{
 			att_tex = PLAYER_TILESET+att_tex;
 			//g_count = 0;
@@ -4098,7 +4125,7 @@ for (unsigned int s = 0; s< model_total; s++)
 				
 				
 			}
-				if(strcmp(filename, "CARS.BIN") != 0 && g_count>600)
+				if(!filename_eq_cars_bin(filename) && g_count>600)
 				{
 					g_count = 0;
 				}
@@ -4107,7 +4134,7 @@ for (unsigned int s = 0; s< model_total; s++)
 					g_count++;
 				}
 				
-				if(strcmp(filename, "CARS.BIN") == 0)
+				if(filename_eq_cars_bin(filename))
 				{
 				xpdata_[s]->attbl[k].atrb = Window_In|MESHoff|HSSon|ECdis|CL16Look|CL_Gouraud;
 				}
@@ -4229,7 +4256,7 @@ for (unsigned int s = 0; s< model_total; s++)
 				nxt+=4;
 				att_flip = jo_swap_endian_uint(*((unsigned int *)(stream+nxt)));
 				nxt+=4;
-				if(strcmp(filename, "CARS.BIN") != 0)
+				if(!filename_eq_cars_bin(filename))
 				{
 				att_tex = MAP_TILESET+att_tex;
 				}

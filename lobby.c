@@ -117,21 +117,25 @@ static void do_input(void)
         g_pressed_start = true;
     } else { g_pressed_start = false; }
 
-    /* B = back to title (stay connected) */
+    /* B = back to title (stay connected on server side, but local UI exits).
+     * MUST call mmm_back_to_title_screen() — that forwards to
+     * transition_to_title_screen() which reloads TITLE.BIN + TITLE.TGA.
+     * Without it, xpdata_/MAP_TILESET still hold track data after a race
+     * and the title 3D background renders as garbage. */
     if (KEY_PRESS_PORT(0, PER_DGT_TB)) {
         if (!g_pressed_B) {
             g_online_mode = false;
-            mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+            mmm_back_to_title_screen();
         }
         g_pressed_B = true;
     } else { g_pressed_B = false; }
 
-    /* Y = full disconnect */
+    /* Y = full disconnect — same title-restore requirement. */
     if (KEY_PRESS_PORT(0, PER_DGT_TY)) {
         if (!g_pressed_Y) {
             mnet_send_disconnect();
             g_online_mode = false;
-            mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+            mmm_back_to_title_screen();
         }
         g_pressed_Y = true;
     } else { g_pressed_Y = false; }
@@ -269,7 +273,7 @@ void lobby_screen(void)
     /* Lost connection */
     if (g_mnet.state == MNET_STATE_DISCONNECTED) {
         g_online_mode = false;
-        mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+        mmm_back_to_title_screen();
         return;
     }
 

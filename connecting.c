@@ -95,7 +95,7 @@ static void do_input(void)
         if (!g_pressed_B) {
             mnet_send_disconnect();
             g_online_mode = false;
-            mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+            mmm_back_to_title_screen();
         }
         g_pressed_B = true;
     } else {
@@ -218,7 +218,7 @@ static void advance_stage(void)
         g_timer++;
         if (g_timer > 180) {
             g_online_mode = false;
-            mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+            mmm_back_to_title_screen();
         }
         break;
     }
