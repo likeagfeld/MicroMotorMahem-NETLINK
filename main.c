@@ -199,6 +199,11 @@ extern Uint8 cam_mode;
 extern Uint8 saved_cam_mode;
 extern Uint8 current_players;
 extern Uint8 cd_track;
+/* CDDA state — title screen leaves track 2 playing; we must stop it before
+ * doing any jo_fs_read_file or jo_sprite_add_tga_tileset because the CD
+ * block can't service ISO reads while the audio decoder owns the head. */
+extern bool is_cd_playing;
+extern void CDDAStop(void);
 
 void mmm_online_start_race(void)
 {
@@ -267,6 +272,19 @@ void mmm_online_start_race(void)
                 (int)track, (int)current_players, (int)game.players,
                 g_local_p2_active ? 1 : 0);
         MNET_LOG_INFO(dbg);
+    }
+
+    /* CRITICAL: stop CDDA before any CD data I/O. Title screen leaves
+     * track 2 playing and lobby never stops it — without this, the very
+     * first jo_sprite_add_tga_tileset call hangs because the CD block
+     * is owned by the audio decoder. Mirrors race_start() at main.c:3441
+     * which does the same thing once GAMESTATE_RACE_START is entered. */
+    if (is_cd_playing) {
+        CDDAStop();
+        is_cd_playing = false;
+        MNET_LOG_INFO("PHASE0 CDDA_STOPPED");
+    } else {
+        MNET_LOG_INFO("PHASE0 CDDA_ALREADY_OFF");
     }
 
     jo_sprite_free_from(game.map_sprite_id);
@@ -358,7 +376,7 @@ Uint8 			enableRTG = 1;
 static jo_camera    cam1;
 static jo_camera    cam2;
 
-static bool     	is_cd_playing = false;
+bool     	is_cd_playing = false;
 
 static bool			show_debug = false;	
 static bool			show_level_map = true;
