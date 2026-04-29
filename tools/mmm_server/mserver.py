@@ -1534,7 +1534,7 @@ class MMMServer:
                 slots += 1 + len(c.local_player_names)
         slots += len(self.bots)
         if slots >= MAX_PLAYERS:
-            client.send_raw(build_log("Server full (%d/%d)" %
+            client.send_raw(build_log("SERVER FULL (%d/%d)" %
                                       (slots, MAX_PLAYERS)))
             return
         client.username = username
@@ -1547,13 +1547,13 @@ class MMMServer:
                                 reason="new")
         client.send_raw(build_welcome(client.user_id, client.uuid, username))
         if self.game_active:
-            client.send_raw(build_log("Race in progress - wait for next round"))
+            client.send_raw(build_log("RACE IN PROGRESS - WAIT FOR NEXT ROUND"))
         self._broadcast_lobby_state()
         self._send_leaderboard_to_client(client)
         for s, c in self.clients.items():
             if s != sock and c.authenticated:
                 c.send_raw(build_player_join(client.user_id, username))
-                c.send_raw(build_log("%s joined!" % username))
+                c.send_raw(build_log("%s JOINED!" % username.upper()))
 
     def _handle_add_local_player(self, sock, client: MMMConnection,
                                  payload: bytes):
@@ -1578,7 +1578,7 @@ class MMMServer:
                 slots += 1 + len(c.local_player_names)
         slots += len(self.bots)
         if slots >= MAX_PLAYERS:
-            client.send_raw(build_log("Server full"))
+            client.send_raw(build_log("SERVER FULL"))
             return
         # Disambiguate
         all_names = set()
@@ -1663,10 +1663,10 @@ class MMMServer:
         total += len(self.bots)
 
         if total < MIN_PLAYERS:
-            client.send_raw(build_log("Need %d+ ready players" % MIN_PLAYERS))
+            client.send_raw(build_log("NEED %d+ READY PLAYERS" % MIN_PLAYERS))
             return
         if total > MAX_PLAYERS:
-            client.send_raw(build_log("Too many players (max %d)" %
+            client.send_raw(build_log("TOO MANY PLAYERS (MAX %d)" %
                                       MAX_PLAYERS))
             return
 
@@ -2073,7 +2073,7 @@ class MMMServer:
                         p.dnf = True
                 # Notify other in-game clients
                 leave_msg = build_player_leave(client.user_id)
-                log_msg = build_log("%s disconnected" %
+                log_msg = build_log("%s DISCONNECTED" %
                                     (client.username or "Player"))
                 for s, c in self.clients.items():
                     if c.in_game and s != sock:
