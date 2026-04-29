@@ -198,6 +198,7 @@ extern void ztClearText(void);
 extern Uint8 cam_mode;
 extern Uint8 saved_cam_mode;
 extern Uint8 current_players;
+extern Uint8 cd_track;
 
 void mmm_online_start_race(void)
 {
@@ -277,15 +278,29 @@ void mmm_online_start_race(void)
     create_player();
     MNET_LOG_INFO("START_RACE PHASE2 CREATE_PLAYER OK");
 
-    /* IMPORTANT: load_level MUST run before init_1p/2p_display because
-     * load_level calls load_textures + load_binary which configure VDP1
-     * sprite tilesets and SGL XPDATA. init_1p/2p_display only sets the
-     * VDP2 scroll windows — it depends on load_level's RBG0 plane data
-     * being ready. Reversing this order leaves VDP2 RBG0 visible with
-     * empty tile data → black screen + locks the SGL pipeline waiting
-     * for a valid drawing context. */
-    load_level();
-    MNET_LOG_INFO("START_RACE PHASE3 LOAD_LEVEL OK");
+    /* Inline load_level() to expose sub-phase hangs in client log.
+     * Track 4 = POOLTABLE 1 → tileset "PT.TGA" + binary "PT1.BIN". */
+    {
+        char dbg[96];
+        sprintf(dbg, "PHASE3A LOAD_TEX %s", level_data[game.level].tileset);
+        MNET_LOG_INFO(dbg);
+    }
+    load_textures(level_data[game.level].tileset, 44);
+    MNET_LOG_INFO("PHASE3B LOAD_TEX OK");
+
+    {
+        char dbg[96];
+        sprintf(dbg, "PHASE3C LOAD_BIN %s", level_data[game.level].file_name);
+        MNET_LOG_INFO(dbg);
+    }
+    load_binary((char*)level_data[game.level].file_name, (void*)WORK_RAM_LOW);
+    MNET_LOG_INFO("PHASE3D LOAD_BIN OK");
+
+    game.level_inside = level_data[game.level].is_inside;
+    cd_track = level_data[game.level].cd_track;
+    game.target_mins = level_data[game.level].level_target_time / 60;
+    game.target_secs = level_data[game.level].level_target_time % 60;
+    MNET_LOG_INFO("PHASE3 LEVEL_DONE");
 
     if (g_local_p2_active) init_2p_display();
     else                   init_1p_display();
