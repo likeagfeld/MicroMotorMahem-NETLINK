@@ -5370,13 +5370,32 @@ void			my_gamepad(void)
 				if (bits >= 0) mmm_apply_remote_input(p, (uint8_t)bits);
 			}
 		}
-		/* Pack local P1 input bits and ship them. */
+		/* Pack local P1 input bits and ship them.
+		 *
+		 * 3D Control Pad (peripheral id 0x16) re-maps the buttons per user
+		 * spec: RT=gas, B=brake, A=unused. Analog stick X drives steering
+		 * with a ~32-unit deadzone (PerAnalog x is centered at 128). */
 		{
 			uint8_t bits = 0;
-			if (KEY_PRESS(0, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
-			if (KEY_PRESS(0, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
-			if (KEY_PRESS(0, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
-			if (KEY_PRESS(0, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+			bool is_3d_pad = (Smpc_Peripheral[0].id == 0x16);
+			if (is_3d_pad) {
+				PerAnalog* a = (PerAnalog*)&Smpc_Peripheral[0];
+				int rawX = (int)a->x - 128;
+				if (rawX < -32) bits |= MNET_INPUT_LEFT;
+				else if (rawX > 32) bits |= MNET_INPUT_RIGHT;
+				else {
+					/* Allow D-pad fallback even on a 3D pad. */
+					if (KEY_PRESS(0, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
+					if (KEY_PRESS(0, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
+				}
+				if (KEY_PRESS(0, PER_DGT_TR)) bits |= MNET_INPUT_GAS;
+				if (KEY_PRESS(0, PER_DGT_TB)) bits |= MNET_INPUT_BRAKE;
+			} else {
+				if (KEY_PRESS(0, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
+				if (KEY_PRESS(0, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
+				if (KEY_PRESS(0, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
+				if (KEY_PRESS(0, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+			}
 			if (KEY_PRESS(0, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
 			if (KEY_PRESS(0, PER_DGT_ST)) bits |= MNET_INPUT_START;
 			if (KEY_PRESS(0, PER_DGT_TC)) bits |= MNET_INPUT_HORN;
@@ -5386,10 +5405,24 @@ void			my_gamepad(void)
 			int p2port = mmm_get_p2_port();
 			if (p2port >= 0) {
 				uint8_t bits = 0;
-				if (KEY_PRESS(p2port, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
-				if (KEY_PRESS(p2port, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
-				if (KEY_PRESS(p2port, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
-				if (KEY_PRESS(p2port, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+				bool is_3d_pad_p2 = (Smpc_Peripheral[p2port].id == 0x16);
+				if (is_3d_pad_p2) {
+					PerAnalog* a = (PerAnalog*)&Smpc_Peripheral[p2port];
+					int rawX = (int)a->x - 128;
+					if (rawX < -32) bits |= MNET_INPUT_LEFT;
+					else if (rawX > 32) bits |= MNET_INPUT_RIGHT;
+					else {
+						if (KEY_PRESS(p2port, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
+						if (KEY_PRESS(p2port, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
+					}
+					if (KEY_PRESS(p2port, PER_DGT_TR)) bits |= MNET_INPUT_GAS;
+					if (KEY_PRESS(p2port, PER_DGT_TB)) bits |= MNET_INPUT_BRAKE;
+				} else {
+					if (KEY_PRESS(p2port, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
+					if (KEY_PRESS(p2port, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
+					if (KEY_PRESS(p2port, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
+					if (KEY_PRESS(p2port, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+				}
 				if (KEY_PRESS(p2port, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
 				if (KEY_PRESS(p2port, PER_DGT_TC)) bits |= MNET_INPUT_HORN;
 				mnet_send_input_state_p2(g_mnet.local_frame + 1, bits);
@@ -5413,10 +5446,24 @@ void			my_gamepad(void)
 			players[p].gamepad = 7;  /* unused port = no key press detected */
 		}
 
+		/* 3D Control Pad detection (peripheral id 0x16 = analog mode). When
+		 * present we use analog stick X for steering and remap gas/brake to
+		 * RT/B (per user spec for MMM). Works in both offline and online
+		 * since this branches off the resolved gamepad index. */
+		bool is_3d_pad = (players[p].gamepad >= 0 && players[p].gamepad < 7 &&
+		                  Smpc_Peripheral[players[p].gamepad].id == 0x16);
+		bool analog_left = false, analog_right = false;
+		if (is_3d_pad) {
+			PerAnalog* a = (PerAnalog*)&Smpc_Peripheral[players[p].gamepad];
+			int rawX = (int)a->x - 128;
+			if (rawX < -32) analog_left = true;
+			else if (rawX > 32) analog_right = true;
+		}
+
 		if(players[p].can_be_hurt)
 		{
 
-			if (KEY_PRESS(players[p].gamepad,PER_DGT_KL) || players[p].cpu_left)
+			if (KEY_PRESS(players[p].gamepad,PER_DGT_KL) || players[p].cpu_left || analog_left)
 						{//left
 						
 							if(players[p].enable_controls)
@@ -5435,7 +5482,7 @@ void			my_gamepad(void)
 						
 						}
 			else
-			if (KEY_PRESS(players[p].gamepad,PER_DGT_KR) || players[p].cpu_right)
+			if (KEY_PRESS(players[p].gamepad,PER_DGT_KR) || players[p].cpu_right || analog_right)
 					{//right
 						
 						if(players[p].enable_controls)
@@ -5457,18 +5504,18 @@ void			my_gamepad(void)
 			else
 			{players[p].wheel_ry =0;}
 		
-			if((KEY_PRESS(players[p].gamepad,PER_DGT_KL) || players[p].cpu_left) && players[p].physics_speed > (players[p].physics_max_speed/2))
+			if((KEY_PRESS(players[p].gamepad,PER_DGT_KL) || players[p].cpu_left || analog_left) && players[p].physics_speed > (players[p].physics_max_speed/2))
 			{
 			//jo_audio_stop_sound(&drift_sound);
 			//jo_audio_play_sound_on_channel(&drift_sound, 3);
 			if(!players[p].physics_is_in_air)
 			{
-			pcm_play(players[p].drift_sound, PCM_ALT_LOOP, players[p].volume);			
+			pcm_play(players[p].drift_sound, PCM_ALT_LOOP, players[p].volume);
 			players[p].drift = true;
-			}	
+			}
 			}else
-			
-			if((KEY_PRESS(players[p].gamepad,PER_DGT_KR)|| players[p].cpu_right) && players[p].physics_speed > (players[p].physics_max_speed/2))
+
+			if((KEY_PRESS(players[p].gamepad,PER_DGT_KR)|| players[p].cpu_right || analog_right) && players[p].physics_speed > (players[p].physics_max_speed/2))
 			{
 			
 			if(!players[p].physics_is_in_air)
@@ -5483,8 +5530,15 @@ void			my_gamepad(void)
 			}
 		
 		
-			if ((KEY_PRESS(players[p].gamepad,PER_DGT_TB)&& players[p].enable_controls) || players[p].cpu_gas)
-						{	
+			/* Gas: standard pad = B button, 3D pad = R trigger.
+			 * Brake: standard pad = A button, 3D pad = B button. */
+			bool gas_pressed   = is_3d_pad ? KEY_PRESS(players[p].gamepad,PER_DGT_TR)
+			                               : KEY_PRESS(players[p].gamepad,PER_DGT_TB);
+			bool brake_pressed = is_3d_pad ? KEY_PRESS(players[p].gamepad,PER_DGT_TB)
+			                               : KEY_PRESS(players[p].gamepad,PER_DGT_TA);
+
+			if ((gas_pressed && players[p].enable_controls) || players[p].cpu_gas)
+						{
 							if(players[p].physics_speed < 0.0f)
 							{
 							physics_decelerate_backwards(p);	
@@ -5506,7 +5560,7 @@ void			my_gamepad(void)
 						//pcm_play(eng1_sound, PCM_ALT_LOOP, 4);
 						}//up
 			else
-			if ((KEY_PRESS(players[p].gamepad,PER_DGT_TA)&&players[p].enable_controls)|| players[p].cpu_brake)
+			if ((brake_pressed && players[p].enable_controls) || players[p].cpu_brake)
 						{
 						if(players[p].physics_speed > 0.0f)
 						{
@@ -5555,7 +5609,10 @@ void			my_gamepad(void)
 				}
 			}
 			
-			if (KEY_PRESS(players[p].gamepad,PER_DGT_TR))
+			/* Look-behind: standard pad = R trigger. In 3D-pad mode the R
+			 * trigger is repurposed as gas (per user spec) and look-behind
+			 * is intentionally not mappable — leave rear_cam off. */
+			if (!is_3d_pad && KEY_PRESS(players[p].gamepad,PER_DGT_TR))
 				{
 					players[p].rear_cam = true;
 				}else

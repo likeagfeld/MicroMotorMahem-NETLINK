@@ -1597,7 +1597,10 @@ class MMMServer:
                     break
         client.local_player_names.append(name)
         client.local_player_cars.append(0)
-        client.send_raw(build_local_player_ack(0xFF))
+        # Lobby-time slot reservation: do NOT send LOCAL_PLAYER_ACK here —
+        # the actual pid isn't known yet. Real ACK with pid is sent at
+        # GAME_START time (see _start_match around line 1726). The lobby
+        # state broadcast below is the authoritative roster update.
         log.info("Player %s added local-coop slot: %s", client.username, name)
         self._broadcast_lobby_state()
 
@@ -1893,8 +1896,8 @@ class MMMServer:
         # gets a sync every players-count ticks; with 4 players => 5Hz).
         if self.sim.players:
             pids = sorted(self.sim.players.keys())
-            slot = self._sync_round_robin % len(pids)
-            self._sync_round_robin += 1
+            slot = self.sim._sync_round_robin % len(pids)
+            self.sim._sync_round_robin += 1
             target_pid = pids[slot]
             p = self.sim.players[target_pid]
             sync_msg = build_player_sync(p.player_id, p.x, p.y, p.z,

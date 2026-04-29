@@ -53,6 +53,10 @@ void connecting_init(void)
 
 static void do_init(void)
 {
+    /* Clear the NBG2 plane so any leftover text from name entry (or another
+     * earlier screen) doesn't bleed through behind our connecting UI. */
+    jo_nbg2_clear();
+
     g_stage = CONNECT_STAGE_INIT;
     g_msg = "PREPARING...";
     g_timer = 0;
@@ -234,17 +238,35 @@ void connecting_screen(void)
     /* Title */
     jo_nbg2_printf(13, 4, "CONNECTING");
 
-    /* Status (padded to clear stale longer text) */
-    jo_nbg2_printf(5, 12, "%-30s", g_msg);
+    /* Status (padded wide enough to clear any prior longer message). g_msg is
+     * always set to a string literal in advance_stage() so it's null-terminated
+     * by definition. */
+    {
+        const char* m = (g_msg != 0) ? g_msg : "";
+        jo_nbg2_printf(5, 12, "%-32s", m);
+    }
 
-    /* Log lines */
+    /* Log lines. Only render entries that the net layer has actually filled —
+     * guard against stale/garbage early-frame contents by checking first char
+     * is non-zero AND printable ASCII. Pad to 32 chars (was 33) consistently. */
     for (i = 0; i < 4; i++) {
+        bool show = false;
         if (i < g_mnet.log_count) {
-            jo_nbg2_printf(3, 16 + i, "%-33s", g_mnet.log_lines[i]);
+            unsigned char c0 = (unsigned char)g_mnet.log_lines[i][0];
+            if (c0 != 0 && c0 >= 32 && c0 < 127) {
+                show = true;
+            }
+        }
+        if (show) {
+            /* Force-terminate just in case a writer ran past the buffer end. */
+            g_mnet.log_lines[i][39] = '\0';
+            jo_nbg2_printf(3, 16 + i, "%-32s", g_mnet.log_lines[i]);
         } else {
-            jo_nbg2_printf(3, 16 + i, "                                 ");
+            jo_nbg2_printf(3, 16 + i, "%-32s", "");
         }
     }
 
     jo_nbg2_printf(8, 26, "PRESS B TO CANCEL");
+    /* Trailing blank to overwrite any stale text below the cancel hint. */
+    jo_nbg2_printf(0, 27, "%-40s", "");
 }

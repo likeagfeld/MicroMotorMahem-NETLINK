@@ -280,33 +280,54 @@ void name_entry_screen(void)
     /* Title */
     jo_nbg2_printf(13, 4, "ENTER NAME");
 
-    /* Grid */
-    jo_nbg2_printf(gridX, gridY,     "A B C D E F G H I");
-    jo_nbg2_printf(gridX, gridY + 2, "J K L M N O P Q R");
-    jo_nbg2_printf(gridX, gridY + 4, "S T U V W X Y Z  ");
-    jo_nbg2_printf(gridX, gridY + 6, "0 1 2 3 4 5 6 7 8 9");
-    jo_nbg2_printf(gridX, gridY + 8, ".  :  DEL  OK    ");
+    /* Grid - render each cell as 3-char-wide [X] for selected, " X " for others.
+     * This keeps column layout uniform and gives a clear visual cursor. */
+    {
+        int r, c, cx, len;
+        for (r = 0; r < 4; r++) {
+            len = getRowLen(r);
+            for (c = 0; c < len; c++) {
+                cx = gridX + c * 3;
+                char ch = getGridChar(r, c);
+                if (r == g_cursor_row && c == g_cursor_col) {
+                    jo_nbg2_printf(cx, gridY + (r * 2), "[%c]", ch);
+                } else {
+                    jo_nbg2_printf(cx, gridY + (r * 2), " %c ", ch);
+                }
+            }
+            /* clear trailing positions if previous frame had wider row */
+            for (; c < 10; c++) {
+                cx = gridX + c * 3;
+                jo_nbg2_printf(cx, gridY + (r * 2), "   ");
+            }
+        }
 
-    /* Cursor row marker */
+        /* Row 4: . : DEL OK */
+        {
+            int row4Y = gridY + 8;
+            int xpos = gridX;
+            /* slot 0: '.' (3-wide) */
+            jo_nbg2_printf(xpos, row4Y,
+                (g_cursor_row == 4 && g_cursor_col == 0) ? "[.]" : " . ");
+            xpos += 4;
+            /* slot 1: ':' (3-wide) */
+            jo_nbg2_printf(xpos, row4Y,
+                (g_cursor_row == 4 && g_cursor_col == 1) ? "[:]" : " : ");
+            xpos += 4;
+            /* slot 2: DEL (5-wide) */
+            jo_nbg2_printf(xpos, row4Y,
+                (g_cursor_row == 4 && g_cursor_col == ROW4_DEL) ? "[DEL]" : " DEL ");
+            xpos += 6;
+            /* slot 3: OK (4-wide) */
+            jo_nbg2_printf(xpos, row4Y,
+                (g_cursor_row == 4 && g_cursor_col == ROW4_OK) ? "[OK]" : " OK ");
+        }
+    }
+
+    /* Row marker on left side */
     for (row = 0; row < GRID_ROWS; row++) {
         int rowY = gridY + (row * 2);
         jo_nbg2_printf(gridX - 2, rowY, (row == g_cursor_row) ? ">" : " ");
-    }
-
-    /* Column underline caret */
-    for (row = 0; row < GRID_ROWS; row++) {
-        int underY = gridY + (row * 2) + 1;
-        jo_nbg2_printf(gridX - 1, underY, "                    ");
-        if (row == g_cursor_row) {
-            int cx;
-            if (row < 4) {
-                cx = gridX + g_cursor_col * 2;
-            } else {
-                static const int row4_offsets[] = { 0, 3, 6, 11 };
-                cx = gridX + row4_offsets[g_cursor_col];
-            }
-            jo_nbg2_printf(cx, underY, "^");
-        }
     }
 
     /* Selection indicator on right */
