@@ -154,7 +154,7 @@ void mnet_on_connected(void)
     }
     net_transport_send(g_mnet.transport, g_mnet.tx_buf, len);
 
-    mnet_log("Sent CONNECT");
+    mnet_log("SENT CONNECT");
     /* Lifecycle log: server side records the moment the Saturn flips into
      * AUTH so we can correlate against bridge accept-time. */
     MNET_LOG_INFO("Connected; sending CONNECT");
@@ -202,7 +202,7 @@ static void process_welcome(const uint8_t* payload, int len)
     g_mnet.state = MNET_STATE_LOBBY;
     g_mnet.status_msg = "In Lobby";
     g_mnet.connected_event = true;
-    mnet_log("Welcome!");
+    mnet_log("WELCOME!");
 
     {
         char buf[MNET_CLIENT_LOG_SCRATCH];
@@ -214,7 +214,7 @@ static void process_welcome(const uint8_t* payload, int len)
     if (g_mnet.has_local_p2 && g_mnet.my_name_2[0] != '\0') {
         int slen = mnet_encode_add_local_player(g_mnet.tx_buf, g_mnet.my_name_2);
         net_transport_send(g_mnet.transport, g_mnet.tx_buf, slen);
-        mnet_log("Registering P2...");
+        mnet_log("REGISTERING P2...");
     }
 }
 
@@ -278,7 +278,7 @@ static void process_game_start(const uint8_t* payload, int len)
 
     if (g_mnet.my_player_id >= MNET_MAX_PLAYERS) {
         char buf[MNET_CLIENT_LOG_SCRATCH];
-        mnet_log("Bad player ID!");
+        mnet_log("BAD PLAYER ID!");
         sprintf(buf, "Bad pid in GAME_START: %d", (int)g_mnet.my_player_id);
         MNET_LOG_ERROR(buf);
         g_mnet.state = MNET_STATE_DISCONNECTED;
@@ -317,7 +317,7 @@ static void process_game_start(const uint8_t* payload, int len)
     memset(g_mnet.game_roster, 0, sizeof(g_mnet.game_roster));
     g_mnet.game_roster_count = 0;
 
-    mnet_log("Race starting!");
+    mnet_log("RACE STARTING!");
     {
         char buf[MNET_CLIENT_LOG_SCRATCH];
         sprintf(buf, "GAME_START seed=%lu track=%d laps=%d state->PLAYING",
@@ -452,7 +452,7 @@ static void process_race_finish(const uint8_t* payload, int len)
      * Mirrors Utenyaa's unet_reset_ready_state() — fixes "ready flips off
      * on first A in the second match" bug from Utenyaa alpha 0.1. */
     g_mnet.my_ready = false;
-    mnet_log("Race finished!");
+    mnet_log("RACE FINISHED!");
     {
         char buf[MNET_CLIENT_LOG_SCRATCH];
         sprintf(buf, "RACE_FINISH winner=%d count=%d",
@@ -470,7 +470,7 @@ static void process_game_over(const uint8_t* payload, int len)
     g_mnet.status_msg = "In Lobby";
     /* Reset ready state on lobby re-entry — see process_race_finish comment. */
     g_mnet.my_ready = false;
-    mnet_log("Game over");
+    mnet_log("GAME OVER");
     MNET_LOG_INFO("GAME_OVER state->LOBBY");
 }
 
@@ -561,7 +561,7 @@ static void process_player_join(const uint8_t* payload, int len)
         }
         if (rt >= g_mnet.game_roster_count) g_mnet.game_roster_count = rt + 1;
     }
-    if (g_mnet.state == MNET_STATE_LOBBY) mnet_log("Player joined");
+    if (g_mnet.state == MNET_STATE_LOBBY) mnet_log("PLAYER JOINED");
 }
 
 static void process_local_player_ack(const uint8_t* payload, int len)
@@ -570,7 +570,7 @@ static void process_local_player_ack(const uint8_t* payload, int len)
     if (len < 2) return;
     if (payload[1] != MNET_INVALID_PLAYER_ID) {
         g_mnet.my_player_id_2 = payload[1];
-        mnet_log("P2 joined!");
+        mnet_log("P2 JOINED!");
         {
             char buf[MNET_CLIENT_LOG_SCRATCH];
             sprintf(buf, "P2 added pid=%d", (int)payload[1]);
@@ -612,9 +612,9 @@ static void process_message(const uint8_t* payload, int len)
             slen = mnet_encode_set_username(g_mnet.tx_buf, g_mnet.my_name);
             net_transport_send(g_mnet.transport, g_mnet.tx_buf, slen);
             g_mnet.state = MNET_STATE_AUTHENTICATING;
-            mnet_log("Name taken, retrying");
+            mnet_log("NAME TAKEN, RETRYING");
         } else {
-            mnet_log("All names taken!");
+            mnet_log("ALL NAMES TAKEN!");
             g_mnet.state = MNET_STATE_DISCONNECTED;
             g_mnet.status_msg = "Name unavailable";
         }
@@ -627,7 +627,7 @@ static void process_message(const uint8_t* payload, int len)
     case MNET_MSG_PLAYER_JOIN:      process_player_join(payload, len); break;
     case MNET_MSG_PLAYER_LEAVE:
     {
-        mnet_log("Player left");
+        mnet_log("PLAYER LEFT");
         /* If the leaving pid is ours, the server has booted us. Flag it
          * up so QA can find the boot in mmm_client.log. */
         if (len >= 2) {
@@ -697,7 +697,7 @@ void mnet_tick(void)
             g_mnet.auth_timer = 0;
             g_mnet.auth_retries++;
             if (g_mnet.auth_retries >= MNET_AUTH_MAX_RETRIES) {
-                mnet_log("Auth timeout");
+                mnet_log("AUTH TIMEOUT");
                 /* This will likely fail to send (we're disconnected from the
                  * server's POV) but the bridge may still relay it as a final
                  * breadcrumb. Best-effort. */
@@ -712,7 +712,7 @@ void mnet_tick(void)
                 len = mnet_encode_connect(g_mnet.tx_buf);
             }
             net_transport_send(g_mnet.transport, g_mnet.tx_buf, len);
-            mnet_log("Retrying auth...");
+            mnet_log("RETRYING AUTH...");
         }
     }
 

@@ -214,9 +214,9 @@ static void draw_z_overlay(void)
     }
 
     if (g_mnet.has_last_results) {
-        jo_nbg2_printf(2, 22, "Z: %s", g_z_page == 0 ? "RESULTS  " : "LEADERS  ");
+        jo_nbg2_printf(2, 22, "Z %s", g_z_page == 0 ? "RESULTS  " : "LEADERS  ");
     } else {
-        jo_nbg2_printf(2, 22, "Z: LEADERS  ");
+        jo_nbg2_printf(2, 22, "Z LEADERS  ");
     }
 }
 
@@ -277,7 +277,7 @@ void lobby_screen(void)
     jo_nbg2_printf(15, 4, "LOBBY");
 
     /* Player count */
-    jo_nbg2_printf(2, 7, "PLAYERS: %d/%-2d", g_mnet.lobby_count, MNET_MAX_PLAYERS);
+    jo_nbg2_printf(2, 7, "PLAYERS %d/%-2d", g_mnet.lobby_count, MNET_MAX_PLAYERS);
 
     /* Z overlay or roster */
     if (g_z_held) {
@@ -293,8 +293,8 @@ void lobby_screen(void)
         draw_player_rows();
         /* Centerpiece track-preview placeholder. We don't load the preview
          * TGA in lobby (server hasn't picked yet) — show banner instead. */
-        jo_nbg2_printf(11, 16, "NEXT TRACK: RANDOM");
-        jo_nbg2_printf(2, 18, "YOUR CAR: %d", g_local_car_id);
+        jo_nbg2_printf(11, 16, "NEXT TRACK - RANDOM");
+        jo_nbg2_printf(2, 18, "YOUR CAR %d", g_local_car_id);
 
         if (g_mnet.lobby_count < 2) {
             jo_nbg2_printf(7, 20, "WAITING FOR PLAYERS...");
@@ -312,7 +312,7 @@ void lobby_screen(void)
 
         /* P2 status */
         if (g_local_p2_active) {
-            jo_nbg2_printf(2, 23, "P2: %-8s", g_player_name_2);
+            jo_nbg2_printf(2, 23, "P2 %-8s", g_player_name_2);
         } else {
             jo_nbg2_printf(2, 23, "                ");
         }

@@ -47,6 +47,7 @@
 #include "net/saturn_uart16550.h"
 #include "net/modem.h"
 #include <stdlib.h>   /* srand for online race seed */
+#include <string.h>   /* strcmp for filename checks (replaces upstream pointer compares) */
 
 extern Sint8 SynchConst;
 Sint32 framerate;
@@ -233,12 +234,32 @@ void mmm_online_start_race(void)
     /* Deterministic RNG seed from server. */
     srand(g_mnet.game_seed);
 
-    /* Re-init players + load track. Mirrors offline flow at end of player_select. */
+    /* Order matches offline flow exactly:
+     *   1. clear sprite + bg state
+     *   2. load_level() — calls load_textures("TEX", trackTexture) which
+     *      sets the MAP_TILESET base; CARS.BIN texture indices in load_car
+     *      are computed RELATIVE to PLAYER_TILESET, which depends on this
+     *   3. load_car() per player — populates car XPDATA using texture
+     *      indices that only resolve correctly AFTER load_level() ran
+     *   4. init display + reset_demo
+     * Earlier this called load_car BEFORE load_level which left the car's
+     * model-loader reading texture indices into an unbound atlas, producing
+     * either a freeze (infinite loop in attribute parser) or invisible body
+     * parts (correct geometry, wrong texture slots). */
+    jo_sprite_free_from(game.map_sprite_id);
+    ztClearText();
+    jo_disable_background_3d_plane(JO_COLOR_Black);
+    jo_clear_background(JO_COLOR_Black);
+
     create_player();
     if (g_local_p2_active) init_2p_display();
     else                   init_1p_display();
 
-    /* Apply each player's server-broadcast car id. */
+    load_level();
+    load_preview(level_data[game.level].level_preview);
+    load_trackmap(level_data[game.level].level_map);
+
+    /* Cars after textures bound. */
     for (p = 0; p < game.players && p < 4; p++) {
         Uint8 car = g_mnet.lobby_players[p].car_id;
         if (car >= 8) car = 0;
@@ -247,14 +268,6 @@ void mmm_online_start_race(void)
         load_car(p, car);
     }
 
-    jo_sprite_free_from(game.map_sprite_id);
-    ztClearText();
-    jo_disable_background_3d_plane(JO_COLOR_Black);
-    jo_clear_background(JO_COLOR_Black);
-
-    load_level();
-    load_preview(level_data[game.level].level_preview);
-    load_trackmap(level_data[game.level].level_map);
     init_3d_planes();
     reset_demo();        /* sets game.game_state = GAMESTATE_RACE_START */
     ztClearText();
@@ -3927,7 +3940,7 @@ for (unsigned int s = 0; s< model_total; s++)
 			att_flip = jo_swap_endian_uint(*((unsigned int *)(stream+nxt)));
 			nxt+=4;
 			
-			if(filename == "CARS.BIN")
+			if(strcmp(filename, "CARS.BIN") == 0)
 			{
 			att_tex = PLAYER_TILESET+att_tex;
 			//g_count = 0;
@@ -3979,7 +3992,7 @@ for (unsigned int s = 0; s< model_total; s++)
 				
 				
 			}
-				if(filename != "CARS.BIN" && g_count>600)
+				if(strcmp(filename, "CARS.BIN") != 0 && g_count>600)
 				{
 					g_count = 0;
 				}
@@ -3988,7 +4001,7 @@ for (unsigned int s = 0; s< model_total; s++)
 					g_count++;
 				}
 				
-				if(filename == "CARS.BIN")
+				if(strcmp(filename, "CARS.BIN") == 0)
 				{
 				xpdata_[s]->attbl[k].atrb = Window_In|MESHoff|HSSon|ECdis|CL16Look|CL_Gouraud;
 				}
@@ -4110,7 +4123,7 @@ for (unsigned int s = 0; s< model_total; s++)
 				nxt+=4;
 				att_flip = jo_swap_endian_uint(*((unsigned int *)(stream+nxt)));
 				nxt+=4;
-				if(filename != "CARS.BIN")
+				if(strcmp(filename, "CARS.BIN") != 0)
 				{
 				att_tex = MAP_TILESET+att_tex;
 				}

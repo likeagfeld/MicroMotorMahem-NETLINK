@@ -108,10 +108,13 @@ static void advance_stage(void)
     modem_result_t result;
 
     switch (g_stage) {
+    /* All log strings are UPPERCASE — the NBG2 font (main.c:7278) maps
+     * only " 0-9 A-Z !\"?=%&',.()*+-/<>". Lowercase letters and ':' are
+     * absent and render as garbage. */
     case CONNECT_STAGE_INIT:
         if (!g_modem_detected) {
             g_msg = "NO NETLINK MODEM";
-            mnet_log("No NetLink modem");
+            mnet_log("NO NETLINK MODEM");
             g_stage = CONNECT_STAGE_FAILED;
             return;
         }
@@ -120,7 +123,7 @@ static void advance_stage(void)
 
     case CONNECT_STAGE_SHOW_PROBE:
         g_msg = "PROBING MODEM...";
-        mnet_log("Probing modem...");
+        mnet_log("PROBING MODEM...");
         g_stage = CONNECT_STAGE_PROBING;
         break;
 
@@ -128,17 +131,17 @@ static void advance_stage(void)
         slSynch();
         if (modem_probe(&g_uart) != MODEM_OK) {
             g_msg = "NO MODEM RESPONSE";
-            mnet_log("No modem response");
+            mnet_log("NO MODEM RESPONSE");
             g_stage = CONNECT_STAGE_FAILED;
             return;
         }
-        mnet_log("Modem detected");
+        mnet_log("MODEM DETECTED");
         g_stage = CONNECT_STAGE_SHOW_INIT;
         break;
 
     case CONNECT_STAGE_SHOW_INIT:
         g_msg = "INITIALIZING MODEM...";
-        mnet_log("Initializing modem...");
+        mnet_log("INITIALIZING MODEM...");
         g_stage = CONNECT_STAGE_MODEM_INIT;
         break;
 
@@ -146,17 +149,17 @@ static void advance_stage(void)
         slSynch();
         if (modem_init(&g_uart) != MODEM_OK) {
             g_msg = "MODEM INIT FAILED";
-            mnet_log("Modem init failed");
+            mnet_log("MODEM INIT FAILED");
             g_stage = CONNECT_STAGE_FAILED;
             return;
         }
-        mnet_log("Modem ready");
+        mnet_log("MODEM READY");
         g_stage = CONNECT_STAGE_SHOW_DIAL;
         break;
 
     case CONNECT_STAGE_SHOW_DIAL:
         g_msg = "DIALING SERVER...";
-        mnet_log("Dialing " CONNECT_DIAL_NUMBER "...");
+        mnet_log("DIALING " CONNECT_DIAL_NUMBER "...");
         g_stage = CONNECT_STAGE_DIALING;
         break;
 
@@ -166,38 +169,38 @@ static void advance_stage(void)
         switch (result) {
         case MODEM_CONNECT:
             g_msg = "CONNECTED!";
-            mnet_log("Connection established");
+            mnet_log("CONNECTION ESTABLISHED");
             modem_flush_input(&g_uart);
             g_stage = CONNECT_STAGE_CONNECTED;
             break;
         case MODEM_NO_CARRIER:
             g_msg = "NO CARRIER";
-            mnet_log("NO CARRIER - check cable");
+            mnet_log("NO CARRIER - CHECK CABLE");
             g_stage = CONNECT_STAGE_FAILED;
             break;
         case MODEM_BUSY:
             g_msg = "LINE BUSY";
-            mnet_log("LINE BUSY - try again");
+            mnet_log("LINE BUSY - TRY AGAIN");
             g_stage = CONNECT_STAGE_FAILED;
             break;
         case MODEM_NO_DIALTONE:
             g_msg = "NO DIALTONE";
-            mnet_log("NO DIALTONE - check line");
+            mnet_log("NO DIALTONE - CHECK LINE");
             g_stage = CONNECT_STAGE_FAILED;
             break;
         case MODEM_NO_ANSWER:
             g_msg = "NO ANSWER";
-            mnet_log("NO ANSWER - server down?");
+            mnet_log("NO ANSWER - SERVER DOWN?");
             g_stage = CONNECT_STAGE_FAILED;
             break;
         case MODEM_TIMEOUT_ERR:
             g_msg = "TIMEOUT";
-            mnet_log("TIMEOUT - server offline?");
+            mnet_log("TIMEOUT - SERVER OFFLINE?");
             g_stage = CONNECT_STAGE_FAILED;
             break;
         default:
             g_msg = "UNKNOWN ERROR";
-            mnet_log("Dial failed");
+            mnet_log("DIAL FAILED");
             g_stage = CONNECT_STAGE_FAILED;
             break;
         }

@@ -280,8 +280,10 @@ void name_entry_screen(void)
     /* Title */
     jo_nbg2_printf(13, 4, "ENTER NAME");
 
-    /* Grid - render each cell as 3-char-wide [X] for selected, " X " for others.
-     * This keeps column layout uniform and gives a clear visual cursor. */
+    /* Grid - 3-char-wide cells. Cursor rendered as ">X<" since the NBG2
+     * font (set at main.c:7278 to " 0-9 A-Z !\"?=%&',.()*+-/<>") does NOT
+     * include '[' or ']'. The bracket approach left an invisible cursor.
+     * '<' and '>' ARE in the font and render reliably. */
     {
         int r, c, cx, len;
         for (r = 0; r < 4; r++) {
@@ -290,7 +292,7 @@ void name_entry_screen(void)
                 cx = gridX + c * 3;
                 char ch = getGridChar(r, c);
                 if (r == g_cursor_row && c == g_cursor_col) {
-                    jo_nbg2_printf(cx, gridY + (r * 2), "[%c]", ch);
+                    jo_nbg2_printf(cx, gridY + (r * 2), ">%c<", ch);
                 } else {
                     jo_nbg2_printf(cx, gridY + (r * 2), " %c ", ch);
                 }
@@ -302,29 +304,30 @@ void name_entry_screen(void)
             }
         }
 
-        /* Row 4: . : DEL OK */
+        /* Row 4: . - DEL OK  (':' isn't in the font; using '-' as the
+         * second punctuation slot. Cursor uses '>X<' style as above.) */
         {
             int row4Y = gridY + 8;
             int xpos = gridX;
             /* slot 0: '.' (3-wide) */
             jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == 0) ? "[.]" : " . ");
+                (g_cursor_row == 4 && g_cursor_col == 0) ? ">.<" : " . ");
             xpos += 4;
-            /* slot 1: ':' (3-wide) */
+            /* slot 1: '-' (3-wide) -- replaces ':' (not in font) */
             jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == 1) ? "[:]" : " : ");
+                (g_cursor_row == 4 && g_cursor_col == 1) ? ">-<" : " - ");
             xpos += 4;
             /* slot 2: DEL (5-wide) */
             jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == ROW4_DEL) ? "[DEL]" : " DEL ");
+                (g_cursor_row == 4 && g_cursor_col == ROW4_DEL) ? ">DEL<" : " DEL ");
             xpos += 6;
-            /* slot 3: OK (4-wide) */
+            /* slot 3: OK (5-wide for symmetry) */
             jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == ROW4_OK) ? "[OK]" : " OK ");
+                (g_cursor_row == 4 && g_cursor_col == ROW4_OK) ? ">OK<" : " OK ");
         }
     }
 
-    /* Row marker on left side */
+    /* Row marker on left side - '>' is in the font */
     for (row = 0; row < GRID_ROWS; row++) {
         int rowY = gridY + (row * 2);
         jo_nbg2_printf(gridX - 2, rowY, (row == g_cursor_row) ? ">" : " ");
@@ -340,21 +343,21 @@ void name_entry_screen(void)
         selY = gridY + (g_cursor_row * 2);
         if (g_cursor_row < 4) {
             char selChar = getGridChar(g_cursor_row, g_cursor_col);
-            if (selChar) jo_nbg2_printf(28, selY, "[%c]   ", selChar);
+            if (selChar) jo_nbg2_printf(28, selY, ">%c<   ", selChar);
         } else {
-            static const char* labels[] = { "[.]   ", "[:]   ", "[DEL] ", "[OK]  " };
+            static const char* labels[] = { ">.<   ", ">-<   ", ">DEL< ", ">OK<  " };
             jo_nbg2_printf(28, selY, "%s", labels[g_cursor_col]);
         }
     }
 
-    /* Current entry */
-    jo_nbg2_printf(8, 22, "NAME:%-8s", g_name_buf);
+    /* Current entry. ':' replaced with space (not in font). */
+    jo_nbg2_printf(8, 22, "NAME %-8s", g_name_buf);
 
-    /* Controls hint */
+    /* Controls hint. '/' IS in font; ':' is NOT - replaced with space. */
     if (g_name_len > 0) {
-        jo_nbg2_printf(2, 26, "A/C:SELECT  B:BACK  ST:CONFIRM");
+        jo_nbg2_printf(2, 26, "A/C SELECT  B BACK  ST CONFIRM");
     } else {
-        jo_nbg2_printf(2, 26, "A/C:SELECT  B:CANCEL          ");
+        jo_nbg2_printf(2, 26, "A/C SELECT  B CANCEL          ");
     }
 
     /* P2 hint or backup status */
