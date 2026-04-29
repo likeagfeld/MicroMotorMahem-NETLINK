@@ -277,12 +277,19 @@ void mmm_online_start_race(void)
     create_player();
     MNET_LOG_INFO("START_RACE PHASE2 CREATE_PLAYER OK");
 
+    /* IMPORTANT: load_level MUST run before init_1p/2p_display because
+     * load_level calls load_textures + load_binary which configure VDP1
+     * sprite tilesets and SGL XPDATA. init_1p/2p_display only sets the
+     * VDP2 scroll windows — it depends on load_level's RBG0 plane data
+     * being ready. Reversing this order leaves VDP2 RBG0 visible with
+     * empty tile data → black screen + locks the SGL pipeline waiting
+     * for a valid drawing context. */
+    load_level();
+    MNET_LOG_INFO("START_RACE PHASE3 LOAD_LEVEL OK");
+
     if (g_local_p2_active) init_2p_display();
     else                   init_1p_display();
-    MNET_LOG_INFO("START_RACE PHASE3 DISPLAY_INIT OK");
-
-    load_level();
-    MNET_LOG_INFO("START_RACE PHASE4 LOAD_LEVEL OK");
+    MNET_LOG_INFO("START_RACE PHASE4 DISPLAY_INIT OK");
 
     load_preview(level_data[game.level].level_preview);
     load_trackmap(level_data[game.level].level_map);

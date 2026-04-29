@@ -375,37 +375,37 @@ Archive member included to satisfy reference by file (symbol)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_fpcmp_parts_df.o)
                               /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_eq_df.o) (__fpcmp_parts_d)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__addsf3)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__addsf3)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_mul_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__mulsf3)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__mulsf3)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_div_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__divsf3)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__divsf3)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_eq_sf.o)
-                              /tmp/cc2St1h7.ltrans1.ltrans.o (__eqsf2)
+                              /tmp/ccTbkdcY.ltrans1.ltrans.o (__eqsf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_ne_sf.o)
-                              /tmp/cc2St1h7.ltrans1.ltrans.o (__nesf2)
+                              /tmp/ccTbkdcY.ltrans1.ltrans.o (__nesf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_gt_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__gtsf2)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__gtsf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_ge_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__gesf2)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__gesf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_lt_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__ltsf2)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__ltsf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_le_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__lesf2)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__lesf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_si_to_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__floatsisf)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__floatsisf)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_sf_to_si.o)
-                              /tmp/cc2St1h7.ltrans1.ltrans.o (__fixsfsi)
+                              /tmp/ccTbkdcY.ltrans1.ltrans.o (__fixsfsi)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_sf_to_df.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__extendsfdf2)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__extendsfdf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_thenan_sf.o)
                               /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o) (__thenan_sf)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_usi_to_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__floatunsisf)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__floatunsisf)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_make_df.o)
                               /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_sf_to_df.o) (__make_dp)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_df_to_sf.o)
-                              /tmp/cc2St1h7.ltrans0.ltrans.o (__truncdfsf2)
+                              /tmp/ccTbkdcY.ltrans0.ltrans.o (__truncdfsf2)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_pack_sf.o)
                               /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o) (__pack_f)
 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_unpack_sf.o)
@@ -446,7 +446,7 @@ SLSTART         0x0000000006004000       0x30
 .text           0x0000000006004040    0x26430
  *(.text)
  .text          0x0000000006004040        0x0 /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
- .text          0x0000000006004040     0x8134 /tmp/cc2St1h7.ltrans0.ltrans.o
+ .text          0x0000000006004040     0x8138 /tmp/ccTbkdcY.ltrans0.ltrans.o
                 0x0000000006004684                jo_sprite_draw.constprop.39
                 0x00000000060047c8                jo_nbg2_print.constprop.38
                 0x0000000006004854                render_CLUT_sprite_MESH.constprop.37
@@ -481,101 +481,101 @@ SLSTART         0x0000000006004000       0x30
                 0x0000000006007684                mnet_send_remove_local_player
                 0x0000000006007700                mnet_tick
                 0x0000000006008dd4                lobby_screen
-                0x000000000600a5d0                connecting_screen
- .text          0x000000000600c174     0xd2fc /tmp/cc2St1h7.ltrans1.ltrans.o
-                0x000000000600cfa8                my_vblank
-                0x000000000600f83c                load_16bit_pcm
-                0x000000000600f99c                pcm_cease
-                0x000000000600f9c4                pcm_play
-                0x00000000060135f8                init_3d_planes
-                0x0000000006013b38                load_trackmap
-                0x0000000006013b74                load_preview
-                0x0000000006013bb0                load_level
-                0x0000000006015010                load_car
-                0x0000000006016840                gameLoop
- .text          0x0000000006019470     0x3028 /tmp/cc2St1h7.ltrans2.ltrans.o
-                0x0000000006019470                saturn_transport_send.lto_priv.451
-                0x00000000060194c8                saturn_transport_rx_byte.lto_priv.450
-                0x00000000060194dc                saturn_transport_rx_ready.lto_priv.449
-                0x00000000060194f8                draw_powerups
-                0x0000000006019600                create_particles
-                0x00000000060196d4                computeLight
-                0x0000000006019744                create_player
-                0x0000000006019984                set_player_position
-                0x0000000006019acc                getSeconds
-                0x0000000006019b50                apply_player_gravity
-                0x0000000006019ba8                init_1p_display
-                0x0000000006019c30                init_2p_display
-                0x0000000006019cc0                stop_engine_sound
-                0x0000000006019d2c                stop_sounds
-                0x0000000006019dac                reset_to_last_checkpoint
-                0x0000000006019ea4                reset_demo
-                0x000000000601a0ac                render_CLUT_sprite
-                0x000000000601a0fc                ztClearText
-                0x000000000601a148                transition_to_end_level
-                0x000000000601a2d8                mmm_get_p2_port
-                0x000000000601a7b4                saturn_uart_puts.lto_priv.441
-                0x000000000601a808                modem_read_line.lto_priv.442
-                0x000000000601a9b8                modem_escape_to_command.lto_priv.445.lto_priv.447
-                0x000000000601b044                saturn_uart_init.lto_priv.443
-                0x000000000601b0fc                saturn_uart_set_baud.lto_priv.444
-                0x000000000601b930                saturn_uart_flush_rx.lto_priv.448
-                0x000000000601b97c                saturn_uart_loopback_test.lto_priv.453.lto_priv.455
-                0x000000000601ba44                saturn_uart_read_raw.lto_priv.456.lto_priv.458
-                0x000000000601bac0                saturn_uart_getc_timeout.lto_priv.459.lto_priv.461
-                0x000000000601baf4                saturn_uart_getc.lto_priv.462.lto_priv.464
-                0x000000000601bb20                saturn_uart_putc.lto_priv.465.lto_priv.467
-                0x000000000601bb5c                saturn_uart_read_iir.lto_priv.468.lto_priv.470
-                0x000000000601bb74                saturn_uart_read_msr.lto_priv.471.lto_priv.473
-                0x000000000601bb94                saturn_uart_read_lsr.lto_priv.474.lto_priv.476
-                0x000000000601bbb0                saturn_uart_clear_errors.lto_priv.477.lto_priv.479
-                0x000000000601bbd0                saturn_uart_rx_error.lto_priv.480.lto_priv.482
-                0x000000000601bbf0                saturn_uart_rx_ready.lto_priv.483.lto_priv.485
-                0x000000000601bc0c                saturn_uart_tx_ready.lto_priv.486.lto_priv.488
-                0x000000000601bcec                saturn_uart_detect.lto_priv.328
-                0x000000000601bd78                saturn_uart_reg_write.lto_priv.489.lto_priv.491
-                0x000000000601bd90                saturn_uart_reg_read.lto_priv.492.lto_priv.494
-                0x000000000601bdac                saturn_netlink_smpc_disable.lto_priv.495.lto_priv.497
-                0x000000000601bdd8                saturn_netlink_smpc_enable.lto_priv.452
-                0x000000000601be64                saturn_smpc_command.lto_priv.498.lto_priv.500
-                0x000000000601be8c                mnet_encode_lap_complete.lto_priv.341.lto_priv.344
-                0x000000000601beb4                mnet_encode_client_log.lto_priv.337.lto_priv.340
-                0x000000000601bf5c                mnet_encode_leaderboard_req.lto_priv.345.lto_priv.348
-                0x000000000601bf6c                mnet_encode_remove_local_player.lto_priv.349.lto_priv.352
-                0x000000000601bf7c                mnet_encode_add_local_player.lto_priv.329.lto_priv.332
-                0x000000000601c000                mnet_encode_powerup_pickup.lto_priv.353.lto_priv.356
-                0x000000000601c014                mnet_encode_player_state_p2.lto_priv.357.lto_priv.360
-                0x000000000601c0ac                mnet_encode_player_state.lto_priv.361.lto_priv.364
-                0x000000000601c13c                mnet_encode_input_state_p2.lto_priv.365.lto_priv.368
-                0x000000000601c168                mnet_encode_input_state.lto_priv.369.lto_priv.372
-                0x000000000601c190                mnet_encode_car_select.lto_priv.373.lto_priv.376
-                0x000000000601c1a4                mnet_encode_start_game.lto_priv.377.lto_priv.380
-                0x000000000601c1b4                mnet_encode_ready.lto_priv.381.lto_priv.384
-                0x000000000601c1c4                mnet_encode_heartbeat.lto_priv.385.lto_priv.388
-                0x000000000601c1d4                mnet_encode_disconnect.lto_priv.389.lto_priv.392
-                0x000000000601c1e4                mnet_encode_set_username.lto_priv.333.lto_priv.336
-                0x000000000601c264                mnet_encode_connect_uuid.lto_priv.393.lto_priv.396
-                0x000000000601c284                mnet_encode_connect.lto_priv.397.lto_priv.400
-                0x000000000601c294                mnet_read_string.lto_priv.401.lto_priv.404
-                0x000000000601c2dc                mnet_rx_poll.lto_priv.405.lto_priv.440
-                0x000000000601c38c                mnet_rx_init.lto_priv.408.lto_priv.411
-                0x000000000601c39c                mnet_send_frame.lto_priv.412.lto_priv.415
-                0x000000000601c3dc                net_transport_is_connected.lto_priv.416.lto_priv.419
-                0x000000000601c3f4                net_transport_send.lto_priv.420.lto_priv.423
-                0x000000000601c408                net_transport_rx_byte.lto_priv.424.lto_priv.427
-                0x000000000601c41c                net_transport_rx_ready.lto_priv.428.lto_priv.431
-                0x000000000601c430                get_gbr.lto_priv.53.lto_priv.77
-                0x000000000601c438                set_gbr.lto_priv.78.lto_priv.102
-                0x000000000601c440                get_vbr.lto_priv.103.lto_priv.127
-                0x000000000601c448                set_vbr.lto_priv.128.lto_priv.152
-                0x000000000601c450                set_imask.lto_priv.153.lto_priv.177
-                0x000000000601c464                get_imask.lto_priv.178.lto_priv.202
-                0x000000000601c470                get_sr.lto_priv.203.lto_priv.227
-                0x000000000601c478                set_sr.lto_priv.228.lto_priv.252
-                0x000000000601c480                tas.lto_priv.253.lto_priv.277
-                0x000000000601c488                sleep.lto_priv.278.lto_priv.302
-                0x000000000601c490                nop.lto_priv.303.lto_priv.327
- *fill*         0x000000000601c498        0x8 
+                0x000000000600a5d4                connecting_screen
+ .text          0x000000000600c178     0xd2fc /tmp/ccTbkdcY.ltrans1.ltrans.o
+                0x000000000600cfac                my_vblank
+                0x000000000600f840                load_16bit_pcm
+                0x000000000600f9a0                pcm_cease
+                0x000000000600f9c8                pcm_play
+                0x00000000060135fc                init_3d_planes
+                0x0000000006013b3c                load_trackmap
+                0x0000000006013b78                load_preview
+                0x0000000006013bb4                load_level
+                0x0000000006015014                load_car
+                0x0000000006016844                gameLoop
+ .text          0x0000000006019474     0x3028 /tmp/ccTbkdcY.ltrans2.ltrans.o
+                0x0000000006019474                saturn_transport_send.lto_priv.451
+                0x00000000060194cc                saturn_transport_rx_byte.lto_priv.450
+                0x00000000060194e0                saturn_transport_rx_ready.lto_priv.449
+                0x00000000060194fc                draw_powerups
+                0x0000000006019604                create_particles
+                0x00000000060196d8                computeLight
+                0x0000000006019748                create_player
+                0x0000000006019988                set_player_position
+                0x0000000006019ad0                getSeconds
+                0x0000000006019b54                apply_player_gravity
+                0x0000000006019bac                init_1p_display
+                0x0000000006019c34                init_2p_display
+                0x0000000006019cc4                stop_engine_sound
+                0x0000000006019d30                stop_sounds
+                0x0000000006019db0                reset_to_last_checkpoint
+                0x0000000006019ea8                reset_demo
+                0x000000000601a0b0                render_CLUT_sprite
+                0x000000000601a100                ztClearText
+                0x000000000601a14c                transition_to_end_level
+                0x000000000601a2dc                mmm_get_p2_port
+                0x000000000601a7b8                saturn_uart_puts.lto_priv.441
+                0x000000000601a80c                modem_read_line.lto_priv.442
+                0x000000000601a9bc                modem_escape_to_command.lto_priv.445.lto_priv.447
+                0x000000000601b048                saturn_uart_init.lto_priv.443
+                0x000000000601b100                saturn_uart_set_baud.lto_priv.444
+                0x000000000601b934                saturn_uart_flush_rx.lto_priv.448
+                0x000000000601b980                saturn_uart_loopback_test.lto_priv.453.lto_priv.455
+                0x000000000601ba48                saturn_uart_read_raw.lto_priv.456.lto_priv.458
+                0x000000000601bac4                saturn_uart_getc_timeout.lto_priv.459.lto_priv.461
+                0x000000000601baf8                saturn_uart_getc.lto_priv.462.lto_priv.464
+                0x000000000601bb24                saturn_uart_putc.lto_priv.465.lto_priv.467
+                0x000000000601bb60                saturn_uart_read_iir.lto_priv.468.lto_priv.470
+                0x000000000601bb78                saturn_uart_read_msr.lto_priv.471.lto_priv.473
+                0x000000000601bb98                saturn_uart_read_lsr.lto_priv.474.lto_priv.476
+                0x000000000601bbb4                saturn_uart_clear_errors.lto_priv.477.lto_priv.479
+                0x000000000601bbd4                saturn_uart_rx_error.lto_priv.480.lto_priv.482
+                0x000000000601bbf4                saturn_uart_rx_ready.lto_priv.483.lto_priv.485
+                0x000000000601bc10                saturn_uart_tx_ready.lto_priv.486.lto_priv.488
+                0x000000000601bcf0                saturn_uart_detect.lto_priv.328
+                0x000000000601bd7c                saturn_uart_reg_write.lto_priv.489.lto_priv.491
+                0x000000000601bd94                saturn_uart_reg_read.lto_priv.492.lto_priv.494
+                0x000000000601bdb0                saturn_netlink_smpc_disable.lto_priv.495.lto_priv.497
+                0x000000000601bddc                saturn_netlink_smpc_enable.lto_priv.452
+                0x000000000601be68                saturn_smpc_command.lto_priv.498.lto_priv.500
+                0x000000000601be90                mnet_encode_lap_complete.lto_priv.341.lto_priv.344
+                0x000000000601beb8                mnet_encode_client_log.lto_priv.337.lto_priv.340
+                0x000000000601bf60                mnet_encode_leaderboard_req.lto_priv.345.lto_priv.348
+                0x000000000601bf70                mnet_encode_remove_local_player.lto_priv.349.lto_priv.352
+                0x000000000601bf80                mnet_encode_add_local_player.lto_priv.329.lto_priv.332
+                0x000000000601c004                mnet_encode_powerup_pickup.lto_priv.353.lto_priv.356
+                0x000000000601c018                mnet_encode_player_state_p2.lto_priv.357.lto_priv.360
+                0x000000000601c0b0                mnet_encode_player_state.lto_priv.361.lto_priv.364
+                0x000000000601c140                mnet_encode_input_state_p2.lto_priv.365.lto_priv.368
+                0x000000000601c16c                mnet_encode_input_state.lto_priv.369.lto_priv.372
+                0x000000000601c194                mnet_encode_car_select.lto_priv.373.lto_priv.376
+                0x000000000601c1a8                mnet_encode_start_game.lto_priv.377.lto_priv.380
+                0x000000000601c1b8                mnet_encode_ready.lto_priv.381.lto_priv.384
+                0x000000000601c1c8                mnet_encode_heartbeat.lto_priv.385.lto_priv.388
+                0x000000000601c1d8                mnet_encode_disconnect.lto_priv.389.lto_priv.392
+                0x000000000601c1e8                mnet_encode_set_username.lto_priv.333.lto_priv.336
+                0x000000000601c268                mnet_encode_connect_uuid.lto_priv.393.lto_priv.396
+                0x000000000601c288                mnet_encode_connect.lto_priv.397.lto_priv.400
+                0x000000000601c298                mnet_read_string.lto_priv.401.lto_priv.404
+                0x000000000601c2e0                mnet_rx_poll.lto_priv.405.lto_priv.440
+                0x000000000601c390                mnet_rx_init.lto_priv.408.lto_priv.411
+                0x000000000601c3a0                mnet_send_frame.lto_priv.412.lto_priv.415
+                0x000000000601c3e0                net_transport_is_connected.lto_priv.416.lto_priv.419
+                0x000000000601c3f8                net_transport_send.lto_priv.420.lto_priv.423
+                0x000000000601c40c                net_transport_rx_byte.lto_priv.424.lto_priv.427
+                0x000000000601c420                net_transport_rx_ready.lto_priv.428.lto_priv.431
+                0x000000000601c434                get_gbr.lto_priv.53.lto_priv.77
+                0x000000000601c43c                set_gbr.lto_priv.78.lto_priv.102
+                0x000000000601c444                get_vbr.lto_priv.103.lto_priv.127
+                0x000000000601c44c                set_vbr.lto_priv.128.lto_priv.152
+                0x000000000601c454                set_imask.lto_priv.153.lto_priv.177
+                0x000000000601c468                get_imask.lto_priv.178.lto_priv.202
+                0x000000000601c474                get_sr.lto_priv.203.lto_priv.227
+                0x000000000601c47c                set_sr.lto_priv.228.lto_priv.252
+                0x000000000601c484                tas.lto_priv.253.lto_priv.277
+                0x000000000601c48c                sleep.lto_priv.278.lto_priv.302
+                0x000000000601c494                nop.lto_priv.303.lto_priv.327
+ *fill*         0x000000000601c49c        0x4 
  .text          0x000000000601c4a0      0x238 /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A(sys_exit.o)
                 0x000000000601c4a0                sys_version
                 0x000000000601c4c0                SYS_Exit
@@ -1303,7 +1303,7 @@ SLSTART         0x0000000006004000       0x30
                 0x000000000602a464                __etext = .
 
 .text.startup   0x000000000602a470      0xc20
- .text.startup  0x000000000602a470      0xc14 /tmp/cc2St1h7.ltrans0.ltrans.o
+ .text.startup  0x000000000602a470      0xc14 /tmp/ccTbkdcY.ltrans0.ltrans.o
                 0x000000000602a470                main
 
 SLPROG          0x000000000602b0a0    0x158a0
@@ -1706,7 +1706,7 @@ SLPROG          0x000000000602b0a0    0x158a0
 .data           0x0000000006040940     0xe530
  *(.data)
  .data          0x0000000006040940        0x0 /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
- .data          0x0000000006040940     0x25ec /tmp/cc2St1h7.ltrans0.ltrans.o
+ .data          0x0000000006040940     0x25ec /tmp/ccTbkdcY.ltrans0.ltrans.o
                 0x0000000006041040                P4_S_PALETTE
                 0x0000000006041060                P3_S_PALETTE
                 0x0000000006041080                P2_S_PALETTE
@@ -1855,8 +1855,8 @@ SLPROG          0x000000000602b0a0    0x158a0
                 0x0000000006042f04                __jo_b1.lto_priv.565
                 0x0000000006042f08                __jo_sprite_pos
                 0x0000000006042f14                __jo_sprite_attributes
- .data          0x0000000006042f2c     0xb915 /tmp/cc2St1h7.ltrans1.ltrans.o
- .data          0x000000000604e841        0x0 /tmp/cc2St1h7.ltrans2.ltrans.o
+ .data          0x0000000006042f2c     0xb915 /tmp/ccTbkdcY.ltrans1.ltrans.o
+ .data          0x000000000604e841        0x0 /tmp/ccTbkdcY.ltrans2.ltrans.o
  *fill*         0x000000000604e841        0xf 
  .data          0x000000000604e850        0x0 /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A(sys_exit.o)
  .data          0x000000000604e850        0x0 /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A(sys_sub.o)
@@ -2072,7 +2072,7 @@ SLPROG          0x000000000602b0a0    0x158a0
 
 .rodata         0x000000000604ee80     0x10d0
  *(.rodata)
- .rodata        0x000000000604ee80      0x5f4 /tmp/cc2St1h7.ltrans0.ltrans.o
+ .rodata        0x000000000604ee80      0x5f4 /tmp/ccTbkdcY.ltrans0.ltrans.o
                 0x000000000604eebc                player4_img_data
                 0x000000000604ef40                player3_img_data
                 0x000000000604efc4                player2_img_data
@@ -2082,9 +2082,9 @@ SLPROG          0x000000000602b0a0    0x158a0
                 0x000000000604f258                __jo_rbg0_r_table.lto_priv.570
                 0x000000000604f25c                __jo_back_color.lto_priv.569
                 0x000000000604f470                __jo_gouraud_shading_runtime_index
- .rodata        0x000000000604f474      0x5b8 /tmp/cc2St1h7.ltrans1.ltrans.o
+ .rodata        0x000000000604f474      0x5b8 /tmp/ccTbkdcY.ltrans1.ltrans.o
                 0x000000000604f4b0                sfx_volume
- .rodata        0x000000000604fa2c       0x14 /tmp/cc2St1h7.ltrans2.ltrans.o
+ .rodata        0x000000000604fa2c       0x14 /tmp/ccTbkdcY.ltrans2.ltrans.o
  .rodata        0x000000000604fa40       0x10 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_thenan_sf.o)
                 0x000000000604fa40                __thenan_sf
  .rodata        0x000000000604fa50        0x4 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-impure.o)
@@ -2105,13 +2105,13 @@ SLPROG          0x000000000602b0a0    0x158a0
 
 .rodata.str1.4  0x000000000604ff50     0x1430
  .rodata.str1.4
-                0x000000000604ff50      0xab2 /tmp/cc2St1h7.ltrans0.ltrans.o
+                0x000000000604ff50      0xab2 /tmp/ccTbkdcY.ltrans0.ltrans.o
  *fill*         0x0000000006050a02        0x2 
  .rodata.str1.4
-                0x0000000006050a04      0x80b /tmp/cc2St1h7.ltrans1.ltrans.o
+                0x0000000006050a04      0x80b /tmp/ccTbkdcY.ltrans1.ltrans.o
  *fill*         0x000000000605120f        0x1 
  .rodata.str1.4
-                0x0000000006051210       0xc5 /tmp/cc2St1h7.ltrans2.ltrans.o
+                0x0000000006051210       0xc5 /tmp/ccTbkdcY.ltrans2.ltrans.o
  *fill*         0x00000000060512d5        0x3 
  .rodata.str1.4
                 0x00000000060512d8       0x3a /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-svfprintf.o)
@@ -2132,7 +2132,7 @@ SLPROG          0x000000000602b0a0    0x158a0
                 0x0000000006051380                __bstart = .
  *(.bss)
  .bss           0x0000000006051380        0x0 /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
- .bss           0x0000000006051380    0x6e7dc /tmp/cc2St1h7.ltrans0.ltrans.o
+ .bss           0x0000000006051380    0x6e7dc /tmp/ccTbkdcY.ltrans0.ltrans.o
                 0x0000000006051380                g_player_name
                 0x0000000006051391                current_players
                 0x0000000006051394                g_player_name_2
@@ -2184,11 +2184,11 @@ SLPROG          0x000000000602b0a0    0x158a0
                 0x0000000006052f7c                __jo_sprintf_buf
                 0x0000000006052fbc                __jo_sprite_pic
                 0x00000000060537b4                __jo_sprite_def
- .bss           0x00000000060bfb5c       0xac /tmp/cc2St1h7.ltrans1.ltrans.o
+ .bss           0x00000000060bfb5c       0xac /tmp/ccTbkdcY.ltrans1.ltrans.o
                 0x00000000060bfb5c                is_cd_playing.lto_priv.575
                 0x00000000060bfb5d                target_player
                 0x00000000060bfb60                light.lto_priv.574
- .bss           0x00000000060bfc08       0x86 /tmp/cc2St1h7.ltrans2.ltrans.o
+ .bss           0x00000000060bfc08       0x86 /tmp/ccTbkdcY.ltrans2.ltrans.o
  *fill*         0x00000000060bfc8e        0x2 
  .bss           0x00000000060bfc90        0x4 /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A(sys_exit.o)
  *fill*         0x00000000060bfc94        0xc 
@@ -2419,9 +2419,9 @@ SLPROG          0x000000000602b0a0    0x158a0
                 0x00000000060bfcfc                __bend = .
                 0x00000000060bfcfc                _end = .
 LOAD /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
-LOAD /tmp/cc2St1h7.ltrans0.ltrans.o
-LOAD /tmp/cc2St1h7.ltrans1.ltrans.o
-LOAD /tmp/cc2St1h7.ltrans2.ltrans.o
+LOAD /tmp/ccTbkdcY.ltrans0.ltrans.o
+LOAD /tmp/ccTbkdcY.ltrans1.ltrans.o
+LOAD /tmp/ccTbkdcY.ltrans2.ltrans.o
 LOAD /joe/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A
 LOAD /joe/Compiler/COMMON/SGL_302j/LIB_ELF/LIBCD.A
 LOAD /joe/Compiler/COMMON/SGL_302j/LIB_ELF/LIBSGL.A
@@ -2434,9 +2434,9 @@ LOAD /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc-Os-4-200.a
 OUTPUT(game.elf coff-sh)
 
 .comment        0x0000000000000000      0x5f0
- .comment       0x0000000000000000       0x12 /tmp/cc2St1h7.ltrans0.ltrans.o
- .comment       0x0000000000000012       0x12 /tmp/cc2St1h7.ltrans1.ltrans.o
- .comment       0x0000000000000024       0x12 /tmp/cc2St1h7.ltrans2.ltrans.o
+ .comment       0x0000000000000000       0x12 /tmp/ccTbkdcY.ltrans0.ltrans.o
+ .comment       0x0000000000000012       0x12 /tmp/ccTbkdcY.ltrans1.ltrans.o
+ .comment       0x0000000000000024       0x12 /tmp/ccTbkdcY.ltrans2.ltrans.o
  .comment       0x0000000000000036       0x12 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o)
  .comment       0x0000000000000048       0x12 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_mul_sf.o)
  .comment       0x000000000000005a       0x12 /joe/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_div_sf.o)

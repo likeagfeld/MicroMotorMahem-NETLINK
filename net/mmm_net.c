@@ -40,9 +40,12 @@ void mnet_init(void)
     }
     mnet_rx_init(&g_mnet.rx, g_mnet.rx_buf, sizeof(g_mnet.rx_buf));
 
-    /* Rate limiter: start with full bucket so the first few connection
-     * lifecycle logs always make it through. */
-    g_mnet.client_log_tokens = 4;
+    /* Rate limiter: bumped from 4 to 32 because the START_RACE phase logs
+     * fire 8 messages back-to-back during CD I/O — the smaller bucket was
+     * silently dropping diagnostic frames mid-debug. 32 tokens gives
+     * headroom for any rapid-fire burst while the +1/15-frames refill
+     * caps the long-run rate at ~4 msg/sec (well within 14400 baud). */
+    g_mnet.client_log_tokens = 32;
     g_mnet.client_log_refill = 0;
     g_mnet.client_log_dropped = 0;
 }
@@ -670,12 +673,13 @@ void mnet_tick(void)
 
     g_mnet.frame_count++;
 
-    /* Client-log token bucket refill: +1 per 15 frames, max 4 tokens
-     * → ~4 msgs/sec at 60 fps. */
+    /* Client-log token bucket refill: +1 per 15 frames, cap at 32 tokens
+     * → ~4 msgs/sec sustained, 32 msg burst headroom. The 32-cap matches
+     * the init value in mnet_init so debug bursts during CD I/O survive. */
     g_mnet.client_log_refill++;
     if (g_mnet.client_log_refill >= 15) {
         g_mnet.client_log_refill = 0;
-        if (g_mnet.client_log_tokens < 4) g_mnet.client_log_tokens++;
+        if (g_mnet.client_log_tokens < 32) g_mnet.client_log_tokens++;
     }
 
     if (g_mnet.state == MNET_STATE_OFFLINE ||
