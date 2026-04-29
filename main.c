@@ -5089,8 +5089,22 @@ if (game.pause_menu == 3)
 				case 5: pcm_play(pup_sound, PCM_SEMI, 6);
 						break;
 						
-				case 6: game.game_state = GAMESTATE_UNINITIALIZED;
-						clear_level();
+				case 6:
+						/* Online quit: go back to LOBBY (stay connected) so
+						 * the user can ready up for the next race without
+						 * re-dialing. clear_level()'s offline path falls
+						 * through to transition_to_level_select which is
+						 * wrong for online flow. */
+						if (g_online_mode) {
+							jo_sprite_free_from(game.map_sprite_id);
+							for (int p = 0; p < game.players; p++) stop_sounds(p);
+							is_cd_playing = false;
+							ztClearText();
+							game.game_state = GAMESTATE_LOBBY;
+						} else {
+							game.game_state = GAMESTATE_UNINITIALIZED;
+							clear_level();
+						}
 						break;
 										
 				
@@ -5423,7 +5437,16 @@ void		cpu_control(void)
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
 			{
-				const mnet_remote_state_t* rs = mnet_get_remote_state((uint8_t)p);
+				/* Map local slot p -> server-assigned net_player_id.
+				 * remote_states is keyed by net pid (set by server when it
+				 * broadcasts PLAYER_SYNC), not by our local slot index. If
+				 * they differ (e.g., server bot with pid=2 in our slot=1)
+				 * looking up by slot p yields zeroed state and the bot
+				 * never moves on screen. */
+				uint8_t net_id = s_net_player_id[p];
+				const mnet_remote_state_t* rs;
+				if (net_id == MNET_INVALID_PLAYER_ID) continue;
+				rs = mnet_get_remote_state(net_id);
 				if (!rs) continue;
 				/* Hard-snap position + rotation. Cheap; matches passthrough
 				 * model where server is authoritative on race-state. */
@@ -5465,7 +5488,11 @@ void			my_gamepad(void)
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
 			{
-				int bits = mnet_get_remote_input((uint8_t)p);
+				/* Same pid mapping rule as PLAYER_SYNC consumer above. */
+				uint8_t net_id = s_net_player_id[p];
+				int bits;
+				if (net_id == MNET_INVALID_PLAYER_ID) continue;
+				bits = mnet_get_remote_input(net_id);
 				if (bits >= 0) mmm_apply_remote_input(p, (uint8_t)bits);
 			}
 		}
