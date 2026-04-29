@@ -77,6 +77,13 @@ char g_player_name_2[17] = {0};
 static bool    s_is_local[4]      = { true, true, true, true };
 static Uint8   s_net_player_id[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
 static bool    s_is_bot[4]        = { false, false, false, false };
+/* Local-slot index of OUR primary player (P1 on this Saturn) and of the
+ * optional local-coop P2 slot. PLAYER_STATE / PLAYER_STATE_P2 must read
+ * players[<local-slot>] not players[<net-pid>] — server-assigned net pids
+ * (e.g., 1, 2, 3) often don't equal the local slot index (always 0..3
+ * dense from lobby_players[]). Computed in mmm_online_start_race. */
+static int     s_my_local_slot   = 0;
+static int     s_my_local_slot_2 = -1;
 
 /* NetLink modem board control register (front-panel LED).
  * Same address used by Disasteroids and Japanese XBAND games. */
@@ -245,6 +252,19 @@ void mmm_online_start_race(void)
     if (g_mnet.my_player_id < 4) s_is_local[g_mnet.my_player_id] = true;
     if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID && g_mnet.my_player_id_2 < 4)
         s_is_local[g_mnet.my_player_id_2] = true;
+
+    /* Resolve local-slot indices for our P1 / P2 net pids — used by the
+     * PLAYER_STATE producer below. Without this, players[net_pid] reads
+     * the wrong slot whenever pid != slot (e.g., server gave us pid=2
+     * but our car lives in players[0]). */
+    s_my_local_slot   = 0;
+    s_my_local_slot_2 = -1;
+    for (p = 0; p < 4; p++) {
+        if (s_net_player_id[p] == g_mnet.my_player_id) s_my_local_slot = p;
+        if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
+            s_net_player_id[p] == g_mnet.my_player_id_2)
+            s_my_local_slot_2 = p;
+    }
 
     /* Deterministic RNG seed from server. */
     srand(g_mnet.game_seed);
@@ -5412,26 +5432,33 @@ void		cpu_control(void)
 		uint8_t my_id  = g_mnet.my_player_id;
 		uint8_t my_id2 = g_mnet.my_player_id_2;
 
-		if (my_id < MNET_MAX_PLAYERS && (int)my_id < game.players) {
+		/* Use precomputed LOCAL slot indices, not the server-assigned net
+		 * pids — see s_my_local_slot at top of file. Reading players[my_id]
+		 * directly was reading the WRONG slot whenever net pid != slot
+		 * (the common case once the server assigns sequential pids 1,2,3...
+		 * to players placed in dense slots 0,1,2 from lobby_players[]). */
+		(void)my_id; (void)my_id2;  /* legacy locals, kept for branch logic */
+		if (s_my_local_slot >= 0 && s_my_local_slot < game.players) {
+			int ls = s_my_local_slot;
 			mnet_send_player_state(
-				players[my_id].x, players[my_id].y, players[my_id].z,
-				players[my_id].ry,
-				(int16_t)(players[my_id].physics_speed * 256.0f),
-				players[my_id].laps,
-				players[my_id].current_checkpoint,
-				players[my_id].current_waypoint,
-				players[my_id].dist_to_next_waypoint);
+				players[ls].x, players[ls].y, players[ls].z,
+				players[ls].ry,
+				(int16_t)(players[ls].physics_speed * 256.0f),
+				players[ls].laps,
+				players[ls].current_checkpoint,
+				players[ls].current_waypoint,
+				players[ls].dist_to_next_waypoint);
 		}
-		if (my_id2 != MNET_INVALID_PLAYER_ID && my_id2 < MNET_MAX_PLAYERS &&
-		    (int)my_id2 < game.players) {
+		if (s_my_local_slot_2 >= 0 && s_my_local_slot_2 < game.players) {
+			int ls = s_my_local_slot_2;
 			mnet_send_player_state_p2(
-				players[my_id2].x, players[my_id2].y, players[my_id2].z,
-				players[my_id2].ry,
-				(int16_t)(players[my_id2].physics_speed * 256.0f),
-				players[my_id2].laps,
-				players[my_id2].current_checkpoint,
-				players[my_id2].current_waypoint,
-				players[my_id2].dist_to_next_waypoint);
+				players[ls].x, players[ls].y, players[ls].z,
+				players[ls].ry,
+				(int16_t)(players[ls].physics_speed * 256.0f),
+				players[ls].laps,
+				players[ls].current_checkpoint,
+				players[ls].current_waypoint,
+				players[ls].dist_to_next_waypoint);
 		}
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
