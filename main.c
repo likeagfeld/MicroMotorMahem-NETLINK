@@ -38,6 +38,15 @@
 #include "objects.h"
 #include "hamster.h"
 #include "texture.h"
+#include "state.h"
+#include "name_entry.h"
+#include "connecting.h"
+#include "lobby.h"
+#include "net/mmm_net.h"
+#include "net/mmm_protocol.h"
+#include "net/saturn_uart16550.h"
+#include "net/modem.h"
+#include <stdlib.h>   /* srand for online race seed */
 
 extern Sint8 SynchConst;
 Sint32 framerate;
@@ -49,6 +58,203 @@ Sint32 framerate;
 #define KEY_DOWN(id, key)   ((Smpc_Peripheral[id].push & key) == 0)
 
 player_params 		players[4];
+
+/*============================================================================
+ * NetLink globals (referenced by connecting.c / lobby.c / mmm_net.c)
+ *============================================================================*/
+
+saturn_uart16550_t g_uart = {0};
+bool g_modem_detected = false;
+
+/* state.h externs */
+bool g_online_mode = false;
+bool g_local_p2_active = false;
+char g_player_name[17] = {0};
+char g_player_name_2[17] = {0};
+
+/* per-player NetLink slot info — indexed parallel to players[] */
+static bool    s_is_local[4]      = { true, true, true, true };
+static Uint8   s_net_player_id[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
+static bool    s_is_bot[4]        = { false, false, false, false };
+
+/* NetLink modem board control register (front-panel LED).
+ * Same address used by Disasteroids and Japanese XBAND games. */
+#define NETLINK_BOARD_CTRL  (*(volatile uint8_t*)0x25885031)
+#define NETLINK_BUS_STROBE  (*(volatile uint8_t*)0x2582503D)
+
+static int g_led_counter = 0;
+
+static bool saturn_transport_rx_ready(void* ctx)
+{
+    return saturn_uart_rx_ready((saturn_uart16550_t*)ctx);
+}
+
+static uint8_t saturn_transport_rx_byte(void* ctx)
+{
+    saturn_uart16550_t* u = (saturn_uart16550_t*)ctx;
+    return (uint8_t)saturn_uart_reg_read(u, SATURN_UART_RBR);
+}
+
+static int saturn_transport_send(void* ctx, const uint8_t* data, int len)
+{
+    saturn_uart16550_t* u = (saturn_uart16550_t*)ctx;
+    int i;
+    for (i = 0; i < len; i++) {
+        if (!saturn_uart_putc(u, data[i])) return i;
+    }
+    return len;
+}
+
+net_transport_t g_saturn_transport = {
+    saturn_transport_rx_ready,
+    saturn_transport_rx_byte,
+    saturn_transport_send,
+    (void*)0,
+    (void*)0
+};
+
+/* state.h shims */
+void mmm_set_game_state(uint8_t new_state) { game.game_state = new_state; }
+uint8_t mmm_get_game_state(void)           { return game.game_state; }
+
+int mmm_get_p2_port(void)
+{
+    /* Without multitap: Port B = jo_inputs[6]. With multitap on Port A: slot 1.
+     * Disasteroids' getP2Port() pattern. */
+    if (jo_is_input_available(1)) return 1;   /* multitap slot */
+    if (jo_is_input_available(6)) return 6;   /* Port B direct */
+    return -1;
+}
+
+/* Network tick — called every frame from gameLoop. Pumps RX/TX, blinks LED. */
+static void mmm_network_tick(void)
+{
+    mnet_tick();
+
+    if (game.game_state == GAMESTATE_GAMEPLAY &&
+        g_online_mode && g_modem_detected) {
+        g_led_counter++;
+        if (g_led_counter >= 40) g_led_counter = 0;
+
+        if (g_led_counter == 0) {
+            uint8_t val = NETLINK_BOARD_CTRL;
+            NETLINK_BUS_STROBE = 0;
+            NETLINK_BOARD_CTRL = val | 0x80u;
+            NETLINK_BUS_STROBE = 0;
+        } else if (g_led_counter == 10) {
+            uint8_t val = NETLINK_BOARD_CTRL;
+            NETLINK_BUS_STROBE = 0;
+            NETLINK_BOARD_CTRL = val & 0x7Fu;
+            NETLINK_BUS_STROBE = 0;
+        }
+    } else if (g_led_counter != 0) {
+        uint8_t val = NETLINK_BOARD_CTRL;
+        NETLINK_BUS_STROBE = 0;
+        NETLINK_BOARD_CTRL = val & 0x7Fu;
+        NETLINK_BUS_STROBE = 0;
+        g_led_counter = 0;
+    }
+}
+
+/* Apply server-relayed input bits onto a remote player's cpu_* flags.
+ * Drives the existing input-injection seam used by CPU-controlled cars. */
+static void mmm_apply_remote_input(int p, uint8_t bits)
+{
+    players[p].cpu_left   = (bits & MNET_INPUT_LEFT)   ? true : false;
+    players[p].cpu_right  = (bits & MNET_INPUT_RIGHT)  ? true : false;
+    players[p].cpu_gas    = (bits & MNET_INPUT_GAS)    ? true : false;
+    players[p].cpu_brake  = (bits & MNET_INPUT_BRAKE)  ? true : false;
+    players[p].cpu_action = (bits & MNET_INPUT_ACTION) ? true : false;
+}
+
+void mmm_set_player_net_info(int p, bool is_local, uint8_t net_id, bool is_bot)
+{
+    if (p < 0 || p >= 4) return;
+    s_is_local[p] = is_local;
+    s_net_player_id[p] = net_id;
+    s_is_bot[p] = is_bot;
+}
+
+/* Forward decls referenced before their definitions in this TU. */
+extern void load_level(void);
+extern void load_preview(char* filename);
+extern void load_trackmap(char* filename);
+extern void create_player(void);
+extern void reset_demo(void);
+extern void init_3d_planes(void);
+extern void init_1p_display(void);
+extern void load_car(int p, int car_id);
+extern void ztClearText(void);
+extern Uint8 cam_mode;
+extern Uint8 saved_cam_mode;
+extern Uint8 current_players;
+
+void mmm_online_start_race(void)
+{
+    int p;
+    int track;
+    int total;
+
+    /* Track id from server. Clamp to valid range and skip the title slot (index 0). */
+    track = (int)g_mnet.track_id;
+    if (track < 1) track = 1;
+    if (track > LEVEL_MENU_MAX) track = 1;
+    game.level = track;
+    game.select_level = track;
+    game.mode = GAMEMODE_NETLINKRACE;
+
+    /* How many slots are racing? Lobby roster count if known, else our id + 1. */
+    total = g_mnet.lobby_count;
+    if (total < 1) total = (g_mnet.opponent_count + 1);
+    if (total < 1) total = 1;
+    if (total > 4) total = 4;
+    game.players = total;
+    current_players = 1;  /* one camera in online mode */
+
+    /* Mark per-slot is_local based on server's view (lobby_state tagged it). */
+    for (p = 0; p < 4; p++) {
+        s_is_local[p] = false;
+        s_net_player_id[p] = MNET_INVALID_PLAYER_ID;
+        s_is_bot[p] = false;
+    }
+    for (p = 0; p < g_mnet.lobby_count && p < 4; p++) {
+        s_is_local[p] = g_mnet.lobby_players[p].is_local;
+        s_net_player_id[p] = g_mnet.lobby_players[p].id;
+    }
+    /* Backstop: at minimum our own slot is local. */
+    if (g_mnet.my_player_id < 4) s_is_local[g_mnet.my_player_id] = true;
+    if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID && g_mnet.my_player_id_2 < 4)
+        s_is_local[g_mnet.my_player_id_2] = true;
+
+    /* Deterministic RNG seed from server. */
+    srand(g_mnet.game_seed);
+
+    /* Re-init players + load track. Mirrors offline flow at end of player_select. */
+    create_player();
+    init_1p_display();   /* online uses single-camera regardless of P2 */
+
+    /* Apply each player's server-broadcast car id. */
+    for (p = 0; p < game.players && p < 4; p++) {
+        Uint8 car = g_mnet.lobby_players[p].car_id;
+        if (car >= 8) car = 0;
+        players[p].car_selection = car;
+        players[p].car_selected = true;
+        load_car(p, car);
+    }
+
+    jo_sprite_free_from(game.map_sprite_id);
+    ztClearText();
+    jo_disable_background_3d_plane(JO_COLOR_Black);
+    jo_clear_background(JO_COLOR_Black);
+
+    load_level();
+    load_preview(level_data[game.level].level_preview);
+    load_trackmap(level_data[game.level].level_map);
+    init_3d_planes();
+    reset_demo();        /* sets game.game_state = GAMESTATE_RACE_START */
+    ztClearText();
+    cam_mode = saved_cam_mode;
+}
 static XPDATA *xpdata_[32];
 static PDATA *pdata_LP_[32];
 static CDATA *cdata_[32];
@@ -1487,15 +1693,25 @@ void player_collision_handling(int p)
 						{
 						players[p].current_powerup = 1;
 						}else
-						{						
-						players[p].current_powerup = jo_random(7);//random	
+						{
+						/* Online: server's POWERUP_SPAWN packet sets the type
+						 * for this slot — use it instead of a local roll
+						 * (otherwise each console sees a different powerup). */
+						if (g_online_mode) {
+							uint8_t srv_t = mnet_get_powerup_type((uint8_t)w);
+							players[p].current_powerup = (srv_t == 0xFF) ? 1 : (srv_t % 7) + 1;
+							/* Tell server we picked up this slot — server validates */
+							mnet_send_powerup_pickup((uint8_t)w);
+						} else {
+							players[p].current_powerup = jo_random(7);//random
 						}
-						
-						
+						}
+
+
 					}else
 					{
-					players[p].current_powerup = powerups[w].type;	
-					
+					players[p].current_powerup = powerups[w].type;
+
 					}
 					//players[p].current_powerup = 2;//for testing
 					players[p].pup_timer = 0;
@@ -4865,43 +5081,56 @@ void            title_screen(void)
 	
 	
 	if (KEY_DOWN(0,PER_DGT_ST))
-	{	
+	{
 		pcm_play(pup_sound, PCM_SEMI, 6);
-		game.game_state = GAMESTATE_UNINITIALIZED;
 		ztClearText();
 		game.pressed_start = true;
-		
+
+		/* Online-play menu entry — bypass offline player_select. The lobby
+		 * + GAME_START packet drives car/track/seed. */
+		if (game.title_screen_menu == 4) {
+			game.mode = GAMEMODE_NETLINKRACE;
+			game.players = 1;          /* may grow to 2 if local P2 plugged */
+			current_players = 1;
+			g_online_mode = true;
+			g_local_p2_active = false;
+			game.game_state = GAMESTATE_NAME_ENTRY;
+			return;
+		}
+
+		game.game_state = GAMESTATE_UNINITIALIZED;
+
 		switch(game.title_screen_menu)
 		{
 		case GAMEMODE_2PLAYERVS:	game.players = 2;
 									current_players = 2;
 									break;
-		
+
 		case GAMEMODE_1PLAYERRACE:	game.players = 4;
 									current_players = 1;
 									break;
-		
+
 		case GAMEMODE_1PLAYERSURVIVAL:	game.players = 4;
 										current_players = 1;
 									break;
-				
-		default: 					game.players = 1;	
+
+		default: 					game.players = 1;
 									current_players = 1;
-			
-		}	
-		
+
+		}
+
 		game.mode = game.title_screen_menu;
 		create_player();
-		
+
 		if(game.mode == GAMEMODE_2PLAYERVS)
 		{
-			init_2p_display();	
+			init_2p_display();
 		}
-		
+
 		transition_to_player_select();
-	}	 
-	
-	
+	}
+
+
 }
 
 
@@ -5034,17 +5263,80 @@ void		cpu_control(void)
 			
 		if(!players[p].enable_controls)
 		{
-		players[p].cpu_gas = false;	
+		players[p].cpu_gas = false;
 		players[p].cpu_pressed_action = false;
 		players[p].cpu_action = false;
 		players[p].cpu_siren = false;
 		players[p].cpu_left = false;
 		players[p].cpu_right = false;
 		}
-	
-		
+
 	}
-	
+
+	/* In online mode, advance our local frame counter for next frame's INPUT */
+	if (g_online_mode) g_mnet.local_frame++;
+
+	/* Online: server signaled race finished — transition to end-level screen.
+	 * end_level()'s START handler in gameplay returns us to title; we hijack
+	 * after a fixed delay to go back to lobby instead. */
+	if (g_online_mode && g_mnet.race_finished &&
+	    game.game_state == GAMESTATE_GAMEPLAY) {
+		g_mnet.race_finished = false;
+		game.race_end_timer = RACE_END_TIMER;
+		game.game_state = GAMESTATE_END_LEVEL;
+	}
+
+	/* Online: send our PLAYER_STATE (throttled internally to every 4 frames)
+	 * and snap remote players' position/rotation to last server snapshot
+	 * (passthrough sync — physics still runs, but server keeps it bounded). */
+	if (g_online_mode && game.game_state == GAMESTATE_GAMEPLAY) {
+		int p;
+		uint8_t my_id  = g_mnet.my_player_id;
+		uint8_t my_id2 = g_mnet.my_player_id_2;
+
+		if (my_id < MNET_MAX_PLAYERS && (int)my_id < game.players) {
+			mnet_send_player_state(
+				players[my_id].x, players[my_id].y, players[my_id].z,
+				players[my_id].ry,
+				(int16_t)(players[my_id].physics_speed * 256.0f),
+				players[my_id].laps,
+				players[my_id].current_checkpoint,
+				players[my_id].current_waypoint,
+				players[my_id].dist_to_next_waypoint);
+		}
+		if (my_id2 != MNET_INVALID_PLAYER_ID && my_id2 < MNET_MAX_PLAYERS &&
+		    (int)my_id2 < game.players) {
+			mnet_send_player_state_p2(
+				players[my_id2].x, players[my_id2].y, players[my_id2].z,
+				players[my_id2].ry,
+				(int16_t)(players[my_id2].physics_speed * 256.0f),
+				players[my_id2].laps,
+				players[my_id2].current_checkpoint,
+				players[my_id2].current_waypoint,
+				players[my_id2].dist_to_next_waypoint);
+		}
+
+		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
+			if (s_is_local[p]) continue;
+			{
+				const mnet_remote_state_t* rs = mnet_get_remote_state((uint8_t)p);
+				if (!rs) continue;
+				/* Hard-snap position + rotation. Cheap; matches passthrough
+				 * model where server is authoritative on race-state. */
+				players[p].x = rs->x;
+				players[p].y = rs->y;
+				players[p].z = rs->z;
+				players[p].ry = rs->ry;
+				players[p].physics_speed = (float)rs->speed / 256.0f;
+				players[p].laps = rs->lap;
+				players[p].current_checkpoint = rs->checkpoint;
+				players[p].current_waypoint = rs->cur_wp;
+				players[p].dist_to_next_waypoint = rs->dist_wp;
+			}
+		}
+	}
+
+
 	
 }
 
@@ -5054,20 +5346,71 @@ void			my_gamepad(void)
 {
 	if (game.game_state != GAMESTATE_GAMEPLAY && game.game_state != GAMESTATE_RACE_START)
        return;
-   
-  
-   
+
+
+
   /* if(current_players == 0)
 	{
-	game.game_state = GAMESTATE_PAUSED;	
+	game.game_state = GAMESTATE_PAUSED;
 	}*/
-	
+
+	/* Online: populate cpu_* from server's INPUT_RELAY for non-local players,
+	 * and send our own local input (P1 + optional P2) up to the server. */
+	if (g_online_mode) {
+		int p;
+		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
+			if (s_is_local[p]) continue;
+			{
+				int bits = mnet_get_remote_input((uint8_t)p);
+				if (bits >= 0) mmm_apply_remote_input(p, (uint8_t)bits);
+			}
+		}
+		/* Pack local P1 input bits and ship them. */
+		{
+			uint8_t bits = 0;
+			if (KEY_PRESS(0, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
+			if (KEY_PRESS(0, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
+			if (KEY_PRESS(0, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
+			if (KEY_PRESS(0, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+			if (KEY_PRESS(0, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
+			if (KEY_PRESS(0, PER_DGT_ST)) bits |= MNET_INPUT_START;
+			if (KEY_PRESS(0, PER_DGT_TC)) bits |= MNET_INPUT_HORN;
+			mnet_send_input_state(g_mnet.local_frame + 1, bits);
+		}
+		if (g_local_p2_active) {
+			int p2port = mmm_get_p2_port();
+			if (p2port >= 0) {
+				uint8_t bits = 0;
+				if (KEY_PRESS(p2port, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
+				if (KEY_PRESS(p2port, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
+				if (KEY_PRESS(p2port, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
+				if (KEY_PRESS(p2port, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+				if (KEY_PRESS(p2port, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
+				if (KEY_PRESS(p2port, PER_DGT_TC)) bits |= MNET_INPUT_HORN;
+				mnet_send_input_state_p2(g_mnet.local_frame + 1, bits);
+			} else {
+				/* P2 controller was unplugged mid-race — tell server to drop
+				 * the slot so it doesn't ghost at last position until heartbeat
+				 * timeout. Mirrors Utenyaa's lobby unplug path but in-race. */
+				mnet_send_remove_local_player();
+				g_local_p2_active = false;
+			}
+		}
+	}
+
 	for(int p = 0; p < game.players; p++)
 	{
- 
+		/* In online mode, redirect non-local players' pad reads to an unused
+		 * port so KEY_PRESS() returns 0 — physics drives off cpu_* flags
+		 * populated above from the server relay. */
+		Sint8 saved_gamepad = players[p].gamepad;
+		if (g_online_mode && !s_is_local[p]) {
+			players[p].gamepad = 7;  /* unused port = no key press detected */
+		}
+
 		if(players[p].can_be_hurt)
 		{
-	
+
 			if (KEY_PRESS(players[p].gamepad,PER_DGT_KL) || players[p].cpu_left)
 						{//left
 						
@@ -5371,9 +5714,13 @@ void			my_gamepad(void)
 		{
 			players[p].volume = 0;
 		}
-	}	
-		
-		
+	}
+
+		/* Restore gamepad assignment (was redirected to port 7 for non-local in online mode) */
+		if (g_online_mode && !s_is_local[p]) {
+			players[p].gamepad = saved_gamepad;
+		}
+
 	}//player loop
 	
 	
@@ -5764,6 +6111,41 @@ void				end_level(void)
 {
 if (game.game_state != GAMESTATE_END_LEVEL)
        return;
+
+	/* Online: show race-finish results for ~5 seconds, then back to lobby. */
+	if (g_online_mode) {
+		jo_nbg2_printf(13, 6, "RACE COMPLETE");
+		if (g_mnet.has_last_results) {
+			int i;
+			jo_nbg2_printf(8, 8, "POS NAME           TIME");
+			for (i = 0; i < g_mnet.finish_count && i < MNET_MAX_PLAYERS; i++) {
+				if (!g_mnet.finish[i].active) continue;
+				{
+					uint8_t pid = g_mnet.finish[i].player_id;
+					const char* nm = "???";
+					int j;
+					for (j = 0; j < g_mnet.game_roster_count; j++) {
+						if (g_mnet.game_roster[j].active &&
+						    g_mnet.game_roster[j].id == pid) {
+							nm = g_mnet.game_roster[j].name;
+							break;
+						}
+					}
+					jo_nbg2_printf(8, 9 + i, "%-3d %-14s %4d  ",
+						g_mnet.finish[i].position, nm,
+						g_mnet.finish[i].total_time);
+				}
+			}
+		}
+		jo_nbg2_printf(8, 22, "RETURNING TO LOBBY...");
+		game.race_end_timer--;
+		if (game.race_end_timer <= 0) {
+			ztClearText();
+			game.game_state = GAMESTATE_LOBBY;
+		}
+		return;
+	}
+
 	
 	if(cd_track >0)
 	{
@@ -6472,7 +6854,14 @@ players[p].ry = 0;
 			for(int op = 1; op < game.players; op++)
 			{
 			players[op].car_selected = true;
-			players[op].car_selection = jo_random(model_total-1);
+			/* Online: server-broadcast car_id from LOBBY_STATE keeps every
+			 * Saturn agreed on each opponent's car. */
+			if (g_online_mode && op < MNET_MAX_PLAYERS &&
+			    g_mnet.lobby_players[op].active) {
+				players[op].car_selection = g_mnet.lobby_players[op].car_id;
+			} else {
+				players[op].car_selection = jo_random(model_total-1);
+			}
 			load_car(op,players[op].car_selection);
 			players[op].colour1 = default_colour[players[op].car_selection][op*3];
 			players[op].colour2 = default_colour[players[op].car_selection][(op*3)+1];
@@ -6728,6 +7117,7 @@ void gameLoop(void)
 		sdrv_vblank_rq();
         slUnitMatrix(0);
 		draw_3d_planes();
+		mmm_network_tick();          /* pump RX / TX every frame */
         my_gamepad();
 		cpu_control();
 		race_start();
@@ -6735,6 +7125,9 @@ void gameLoop(void)
 		pause_game();
 		object_viewer();
 		title_screen();
+		name_entry_screen();         /* online: name entry */
+		connecting_screen();         /* online: dial + auth */
+		lobby_screen();              /* online: lobby */
 		player_select();
 		level_select();
 		extra_select();
@@ -6874,6 +7267,29 @@ void			jo_main(void)
 	game.players = 1;
 	CDDASetVolume(music_vol);
 	jo_nbg2_printf(10, 22, "             ");
+
+	/* NetLink: detect modem hardware (non-blocking; does NOT dial). */
+	mnet_init();
+	g_saturn_transport.ctx = &g_uart;
+	saturn_netlink_smpc_enable();
+	{
+		static const struct { uint32_t base; uint32_t stride; } addrs[] = {
+			{ 0x25895001, 4 },
+			{ 0x04895001, 4 }
+		};
+		int i;
+		g_modem_detected = false;
+		for (i = 0; i < 2; i++) {
+			g_uart.base   = addrs[i].base;
+			g_uart.stride = addrs[i].stride;
+			if (saturn_uart_detect(&g_uart)) {
+				g_modem_detected = true;
+				break;
+			}
+		}
+	}
+	mnet_set_modem_available(g_modem_detected);
+
 	game.game_state = GAMESTATE_TITLE_SCREEN;
 	slZdspLevel(5);
 	gameLoop();

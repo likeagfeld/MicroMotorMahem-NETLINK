@@ -1,0 +1,35 @@
+# Saturn build artifacts (not the upstream-tracked ones — see below)
+*.o
+net/*.o
+jo_engine/*.o
+
+# CDDA audio tracks (large; ship via GitHub release zip, not git)
+TRACK*.wav
+TRACK*.WAV
+*.wav
+*.WAV
+
+# Release artifact directory — regenerable from build + WAVs
+Game Files/
+
+# Vendored Jo Engine source — easier to keep out of git history
+jo_engine/
+
+# IDE / OS junk
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
+
+# Python server bytecode + persistent state files
+tools/mmm_server/__pycache__/
+tools/mmm_server/*.pyc
+tools/mmm_server/mmm_leaderboard.json
+tools/mmm_server/mmm_join_history.json
+tools/mmm_server/mmm_client.log*
+tools/mmm_server/_remote_unified_admin.py
+
+# Tmp / scratch
+*.tmp
+*.bak
+MicroMotorMayhem-NETLINK-Alpha-0.1.zip

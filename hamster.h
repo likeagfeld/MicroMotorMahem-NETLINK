@@ -68,12 +68,18 @@
 #define GAMESTATE_EXTRA_SELECT			(10)
 #define GAMESTATE_PLAYER_SELECT			(11)
 #define GAMESTATE_RACE_START			(12)
+/* NetLink online-play states (see state.h) */
+#define GAMESTATE_NAME_ENTRY            (13)
+#define GAMESTATE_CONNECTING            (14)
+#define GAMESTATE_LOBBY                 (15)
 
 #define GAMEMODE_PRACTICE		       (0)
 #define GAMEMODE_TIMEATTACK		       (1)
 #define GAMEMODE_1PLAYERRACE           (2)
 #define GAMEMODE_1PLAYERSURVIVAL       (4)
 #define GAMEMODE_2PLAYERVS             (3)
+/* NetLink online race mode (server-authoritative events) */
+#define GAMEMODE_NETLINKRACE           (5)
 
 
 //define menu options
@@ -81,7 +87,7 @@
 #define LEVEL_MENU_MAX               (15)
 #define SURVIVAL_MENU_MAX            (50)
 #define END_LEVEL_MENU_MAX           (2)
-#define TITLE_SCREEN_MENU_MAX		 (4)
+#define TITLE_SCREEN_MENU_MAX		 (5)
 #define EXTRA_MENU_MAX		 		 (3)
 #define PLAYER_SELECT_MENU_MAX		 (3)
 
@@ -312,11 +318,12 @@ char *cam_modes[]={
 };
 
 char *menu_titlescreen[]={
-	
+
 "PRACTICE",
 "TIME ATTACK",
 "SINGLE RACE",
-"2 PLAYER VS"
+"2 PLAYER VS",
+"ONLINE PLAY"
 };
 
 char *menu_extra[]={

@@ -1,0 +1,16 @@
+[Unit]
+Description=MicroMotorMayhem NetLink Game Server
+After=network.target
+
+[Service]
+Type=simple
+User=gary
+WorkingDirectory=/home/gary
+ExecStart=/usr/bin/python3 /home/gary/mserver.py --port 4826 --bots 0 --admin-port 9094
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
