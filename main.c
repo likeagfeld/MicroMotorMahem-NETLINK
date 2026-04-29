@@ -287,69 +287,57 @@ void mmm_online_start_race(void)
         MNET_LOG_INFO("PHASE0 CDDA_ALREADY_OFF");
     }
 
-    jo_sprite_free_from(game.map_sprite_id);
+    /* PHASE A — mirror offline transition_to_player_select (main.c:4584).
+     * CARS.BIN must populate xpdata_[] FIRST so that subsequent load_car()
+     * calls copy real car geometry into per-player players_car[] buffers.
+     * If we skip this and load the track BIN first, load_car() copies
+     * TRACK MESH GARBAGE into the car buffers, which corrupts the VDP1
+     * sprite atlas and produces patches of glitched map rendering. */
     ztClearText();
-    jo_disable_background_3d_plane(JO_COLOR_Black);
-    jo_clear_background(JO_COLOR_Black);
-    MNET_LOG_INFO("START_RACE PHASE1 BG_CLEARED");
+    MNET_LOG_INFO("PHASE_A LOADING_CARS_BIN");
+    load_binary((char*)"CARS.BIN", (void*)WORK_RAM_LOW);
+    MNET_LOG_INFO("PHASE_A_OK CARS_BIN_LOADED");
 
+    /* PHASE B — copy each player's car geometry into players_car[p] BEFORE
+     * the track BIN overwrites xpdata_. Mirrors offline's player_select
+     * load_car loop at main.c:6877/6935. */
     create_player();
-    MNET_LOG_INFO("START_RACE PHASE2 CREATE_PLAYER OK");
+    MNET_LOG_INFO("PHASE_B CREATE_PLAYER_OK");
 
-    /* Inline load_level() to expose sub-phase hangs in client log.
-     * Track 4 = POOLTABLE 1 → tileset "PT.TGA" + binary "PT1.BIN". */
-    {
-        char dbg[96];
-        sprintf(dbg, "PHASE3A LOAD_TEX %s", level_data[game.level].tileset);
-        MNET_LOG_INFO(dbg);
-    }
-    load_textures(level_data[game.level].tileset, 44);
-    MNET_LOG_INFO("PHASE3B LOAD_TEX OK");
-
-    {
-        char dbg[96];
-        sprintf(dbg, "PHASE3C LOAD_BIN %s", level_data[game.level].file_name);
-        MNET_LOG_INFO(dbg);
-    }
-    load_binary((char*)level_data[game.level].file_name, (void*)WORK_RAM_LOW);
-    MNET_LOG_INFO("PHASE3D LOAD_BIN OK");
-
-    game.level_inside = level_data[game.level].is_inside;
-    cd_track = level_data[game.level].cd_track;
-    game.target_mins = level_data[game.level].level_target_time / 60;
-    game.target_secs = level_data[game.level].level_target_time % 60;
-    MNET_LOG_INFO("PHASE3 LEVEL_DONE");
-
-    if (g_local_p2_active) init_2p_display();
-    else                   init_1p_display();
-    MNET_LOG_INFO("START_RACE PHASE4 DISPLAY_INIT OK");
-
-    load_preview(level_data[game.level].level_preview);
-    load_trackmap(level_data[game.level].level_map);
-    MNET_LOG_INFO("START_RACE PHASE5 PREVIEW_TRACKMAP OK");
-
-    /* Cars after textures bound. */
     for (p = 0; p < game.players && p < 4; p++) {
         Uint8 car = g_mnet.lobby_players[p].car_id;
         if (car >= 8) car = 0;
         players[p].car_selection = car;
         players[p].car_selected = true;
-        {
-            char dbg[96];
-            sprintf(dbg, "START_RACE PHASE6 LOAD_CAR p=%d car=%d", p, (int)car);
-            MNET_LOG_INFO(dbg);
-        }
         load_car(p, car);
     }
-    MNET_LOG_INFO("START_RACE PHASE7 ALL_CARS LOADED");
+    MNET_LOG_INFO("PHASE_B_OK CARS_COPIED");
+
+    /* PHASE C — mirror offline race-start at main.c:6464 (the mid-tournament
+     * level transition). xpdata_ gets overwritten with track models; cars
+     * are now safely captured in players_car[]. */
+    jo_sprite_free_from(game.map_sprite_id);
+    ztClearText();
+    jo_disable_background_3d_plane(JO_COLOR_Black);
+    jo_clear_background(JO_COLOR_Black);
+    MNET_LOG_INFO("PHASE_C BG_CLEARED");
+
+    if (g_local_p2_active) init_2p_display();
+    else                   init_1p_display();
+    MNET_LOG_INFO("PHASE_C_OK DISPLAY_INIT");
+
+    load_level();
+    MNET_LOG_INFO("PHASE_D LEVEL_LOADED");
+
+    load_preview(level_data[game.level].level_preview);
+    load_trackmap(level_data[game.level].level_map);
+    MNET_LOG_INFO("PHASE_D_OK PREVIEW_TRACKMAP");
 
     init_3d_planes();
-    MNET_LOG_INFO("START_RACE PHASE8 3D_PLANES OK");
-
     reset_demo();        /* sets game.game_state = GAMESTATE_RACE_START */
     ztClearText();
     cam_mode = saved_cam_mode;
-    MNET_LOG_INFO("START_RACE COMPLETE state->RACE_START");
+    MNET_LOG_INFO("PHASE_E COMPLETE state->RACE_START");
 }
 static XPDATA *xpdata_[32];
 static PDATA *pdata_LP_[32];
