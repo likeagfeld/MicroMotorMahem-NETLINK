@@ -132,8 +132,17 @@ static void mmm_network_tick(void)
 {
     mnet_tick();
 
-    if (game.game_state == GAMESTATE_GAMEPLAY &&
-        g_online_mode && g_modem_detected) {
+    /* LED blinks during the entire online lifecycle, not just gameplay —
+     * matches the Utenyaa/Disasteroids pattern. The XBAND Japanese modem
+     * and US NetLink modem share board control register 0x25885031 bit 7. */
+    bool led_active = g_online_mode && g_modem_detected && (
+        game.game_state == GAMESTATE_GAMEPLAY  ||
+        game.game_state == GAMESTATE_CONNECTING ||
+        game.game_state == GAMESTATE_LOBBY      ||
+        game.game_state == GAMESTATE_RACE_START ||
+        game.game_state == GAMESTATE_END_LEVEL);
+
+    if (led_active) {
         g_led_counter++;
         if (g_led_counter >= 40) g_led_counter = 0;
 
@@ -246,18 +255,38 @@ void mmm_online_start_race(void)
      * model-loader reading texture indices into an unbound atlas, producing
      * either a freeze (infinite loop in attribute parser) or invisible body
      * parts (correct geometry, wrong texture slots). */
+
+    /* Per-step lifecycle logs — if this function still freezes anywhere,
+     * the last line in mmm_client.log identifies the offending call. The
+     * client_log token bucket is 4 msg/s with refill so these flush even
+     * during heavy CD I/O. */
+    {
+        char dbg[96];
+        sprintf(dbg, "START_RACE BEGIN t=%d s=%d p=%d p2=%d",
+                (int)track, (int)current_players, (int)game.players,
+                g_local_p2_active ? 1 : 0);
+        MNET_LOG_INFO(dbg);
+    }
+
     jo_sprite_free_from(game.map_sprite_id);
     ztClearText();
     jo_disable_background_3d_plane(JO_COLOR_Black);
     jo_clear_background(JO_COLOR_Black);
+    MNET_LOG_INFO("START_RACE PHASE1 BG_CLEARED");
 
     create_player();
+    MNET_LOG_INFO("START_RACE PHASE2 CREATE_PLAYER OK");
+
     if (g_local_p2_active) init_2p_display();
     else                   init_1p_display();
+    MNET_LOG_INFO("START_RACE PHASE3 DISPLAY_INIT OK");
 
     load_level();
+    MNET_LOG_INFO("START_RACE PHASE4 LOAD_LEVEL OK");
+
     load_preview(level_data[game.level].level_preview);
     load_trackmap(level_data[game.level].level_map);
+    MNET_LOG_INFO("START_RACE PHASE5 PREVIEW_TRACKMAP OK");
 
     /* Cars after textures bound. */
     for (p = 0; p < game.players && p < 4; p++) {
@@ -265,13 +294,22 @@ void mmm_online_start_race(void)
         if (car >= 8) car = 0;
         players[p].car_selection = car;
         players[p].car_selected = true;
+        {
+            char dbg[96];
+            sprintf(dbg, "START_RACE PHASE6 LOAD_CAR p=%d car=%d", p, (int)car);
+            MNET_LOG_INFO(dbg);
+        }
         load_car(p, car);
     }
+    MNET_LOG_INFO("START_RACE PHASE7 ALL_CARS LOADED");
 
     init_3d_planes();
+    MNET_LOG_INFO("START_RACE PHASE8 3D_PLANES OK");
+
     reset_demo();        /* sets game.game_state = GAMESTATE_RACE_START */
     ztClearText();
     cam_mode = saved_cam_mode;
+    MNET_LOG_INFO("START_RACE COMPLETE state->RACE_START");
 }
 static XPDATA *xpdata_[32];
 static PDATA *pdata_LP_[32];
