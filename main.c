@@ -209,7 +209,11 @@ void mmm_online_start_race(void)
     if (total < 1) total = 1;
     if (total > 4) total = 4;
     game.players = total;
-    current_players = 1;  /* one camera in online mode */
+
+    /* Mirror offline split-screen behavior: when a 2nd local controller is
+     * registered (via ADD_LOCAL_PLAYER), use 2-player split-screen. Single
+     * fullscreen otherwise. Same as Flicky/Utenyaa local-coop in online. */
+    current_players = (g_local_p2_active ? 2 : 1);
 
     /* Mark per-slot is_local based on server's view (lobby_state tagged it). */
     for (p = 0; p < 4; p++) {
@@ -231,7 +235,8 @@ void mmm_online_start_race(void)
 
     /* Re-init players + load track. Mirrors offline flow at end of player_select. */
     create_player();
-    init_1p_display();   /* online uses single-camera regardless of P2 */
+    if (g_local_p2_active) init_2p_display();
+    else                   init_1p_display();
 
     /* Apply each player's server-broadcast car id. */
     for (p = 0; p < game.players && p < 4; p++) {
