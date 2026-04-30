@@ -313,25 +313,42 @@ void mmm_online_start_race(void)
      * Camera/HUD also default to target_player=0 which would be the
      * remote player. Both fixed here: walk our local mapping and pin
      * P1=gamepad 0, P2=gamepad 15, others to harmless slot 7. */
+    /* Match local slot purely by net pid — don't gate on s_is_local because
+     * the backstop earlier in this function uses my_player_id as an array
+     * index (wrong: it's a net pid 1..255 not a 0..3 slot), so s_is_local
+     * is sometimes set on the wrong slot. Net pid → slot lookup is correct
+     * because s_net_player_id was populated directly from lobby_players[]. */
     {
         int my_primary_slot = -1;
         int my_p2_slot = -1;
         int qp;
         for (qp = 0; qp < game.players && qp < 4; qp++) {
-            if (s_is_local[qp]) {
-                if (s_net_player_id[qp] == g_mnet.my_player_id)
-                    my_primary_slot = qp;
-                else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
-                         s_net_player_id[qp] == g_mnet.my_player_id_2)
-                    my_p2_slot = qp;
-            }
+            if (s_net_player_id[qp] == g_mnet.my_player_id)
+                my_primary_slot = qp;
+            else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
+                     s_net_player_id[qp] == g_mnet.my_player_id_2)
+                my_p2_slot = qp;
         }
+        /* Fallback: if for whatever reason we never found ourselves in the
+         * roster (shouldn't happen but be safe), default to slot 0 so the
+         * player at least has SOMETHING to drive. */
+        if (my_primary_slot < 0) my_primary_slot = 0;
+
+        /* Now also fix s_is_local to actually reflect "is this slot mine"
+         * since downstream code (my_gamepad's gamepad-redirect, the
+         * remote-state hard-snap, the lap-complete sender) relies on it. */
+        for (qp = 0; qp < game.players && qp < 4; qp++) {
+            s_is_local[qp] = (qp == my_primary_slot) || (qp == my_p2_slot);
+        }
+
+        /* Pin gamepads: P1 port for our primary, P2 port for our local-coop
+         * slot, harmless empty port for everyone else. */
         for (qp = 0; qp < game.players && qp < 4; qp++) {
             if (qp == my_primary_slot)        players[qp].gamepad = 0;
             else if (qp == my_p2_slot)        players[qp].gamepad = 15;
             else                              players[qp].gamepad = 7;
         }
-        if (my_primary_slot >= 0) target_player = (Uint8)my_primary_slot;
+        target_player = (Uint8)my_primary_slot;
     }
 
     for (p = 0; p < game.players && p < 4; p++) {
