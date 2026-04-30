@@ -77,12 +77,6 @@ char g_player_name_2[17] = {0};
 static bool    s_is_local[4]      = { true, true, true, true };
 static Uint8   s_net_player_id[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
 static bool    s_is_bot[4]        = { false, false, false, false };
-/* Slot index of OUR primary local player (and optional local-coop P2)
- * after lobby resolution. Used by PLAYER_STATE producer so it sends our
- * actual position to the server, not players[my_player_id] which uses
- * the server net pid as array index — that reads the wrong slot. */
-static int     s_my_primary_slot = 0;
-static int     s_my_p2_slot      = -1;
 
 /* NetLink modem board control register (front-panel LED).
  * Same address used by Disasteroids and Japanese XBAND games. */
@@ -319,37 +313,38 @@ void mmm_online_start_race(void)
      * Camera/HUD also default to target_player=0 which would be the
      * remote player. Both fixed here: walk our local mapping and pin
      * P1=gamepad 0, P2=gamepad 15, others to harmless slot 7. */
-    /* Match local slot purely by net pid; cache in module statics so
-     * PLAYER_STATE producer can read players[s_my_primary_slot] (instead
-     * of the buggy players[my_player_id] which used net pid as index). */
+    /* Match local slot purely by net pid (no new file-scope statics:
+     * adding those has twice broken title-screen rendering on real
+     * hardware, possibly via memory-layout shift). Compute inline,
+     * write into existing s_is_local[] which downstream code already
+     * trusts as the source of "is this my slot". */
     {
         int qp;
-        s_my_primary_slot = -1;
-        s_my_p2_slot = -1;
+        int my_primary_slot = -1;
+        int my_p2_slot = -1;
         for (qp = 0; qp < game.players && qp < 4; qp++) {
             if (s_net_player_id[qp] == g_mnet.my_player_id)
-                s_my_primary_slot = qp;
+                my_primary_slot = qp;
             else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
                      s_net_player_id[qp] == g_mnet.my_player_id_2)
-                s_my_p2_slot = qp;
+                my_p2_slot = qp;
         }
-        if (s_my_primary_slot < 0) s_my_primary_slot = 0;
+        if (my_primary_slot < 0) my_primary_slot = 0;
 
-        /* Rewrite s_is_local from actual mapping — neutralizes buggy
-         * earlier backstop (s_is_local[g_mnet.my_player_id] = true uses
-         * net pid as array index). */
+        /* Rewrite s_is_local from actual mapping — neutralizes the
+         * pre-existing buggy backstop above (it uses net pid as index). */
         for (qp = 0; qp < game.players && qp < 4; qp++) {
-            s_is_local[qp] = (qp == s_my_primary_slot) || (qp == s_my_p2_slot);
+            s_is_local[qp] = (qp == my_primary_slot) || (qp == my_p2_slot);
         }
 
         /* Pin gamepads: P1 port for our primary, P2 port for our local-coop
          * slot, harmless empty port for everyone else. */
         for (qp = 0; qp < game.players && qp < 4; qp++) {
-            if (qp == s_my_primary_slot)      players[qp].gamepad = 0;
-            else if (qp == s_my_p2_slot)      players[qp].gamepad = 15;
+            if (qp == my_primary_slot)        players[qp].gamepad = 0;
+            else if (qp == my_p2_slot)        players[qp].gamepad = 15;
             else                              players[qp].gamepad = 7;
         }
-        target_player = (Uint8)s_my_primary_slot;
+        target_player = (Uint8)my_primary_slot;
     }
 
     for (p = 0; p < game.players && p < 4; p++) {
@@ -1433,11 +1428,13 @@ void player_collision_handling(int p)
 								players[p].best_time = players[p].current_time;	
 								}
 							players[p].laps ++;
-							/* Online: tell server we crossed the finish line. Server
-							 * validates monotonic progression and triggers RACE_FINISH
-							 * once our lap == lap_count. Belt-and-suspenders alongside
-							 * server's implicit-lap detection from PLAYER_STATE.lap. */
-							if (g_online_mode && p == s_my_primary_slot) {
+							/* Online: tell server we crossed the finish line.
+							 * Only send for our PRIMARY local slot (we own
+							 * its pid). s_is_local[p] is rewritten in
+							 * mmm_online_start_race so checking that + matching
+							 * the net pid identifies our own primary. */
+							if (g_online_mode && s_is_local[p] &&
+							    s_net_player_id[p] == g_mnet.my_player_id) {
 								mnet_send_lap_complete(players[p].laps,
 								                       (uint16_t)players[p].current_time);
 							}
@@ -5454,33 +5451,45 @@ void		cpu_control(void)
 		uint8_t my_id  = g_mnet.my_player_id;
 		uint8_t my_id2 = g_mnet.my_player_id_2;
 
-		(void)my_id; (void)my_id2;  /* legacy locals; mapping below is correct */
-		/* Use local slot indices we computed in mmm_online_start_race.
+		(void)my_id; (void)my_id2;  /* legacy locals; we resolve via slot lookup */
+		/* Find OUR local primary + P2 slots by scanning s_net_player_id[]
+		 * (no file-scope cache: that has twice broken title rendering).
 		 * Reading players[my_id] directly was using server net pid as
-		 * array index — wrong slot whenever pid != local index. Result:
-		 * remote Saturns saw us 'frozen at start' because we were
-		 * broadcasting a different slot's stale data as our own state. */
-		if (s_my_primary_slot >= 0 && s_my_primary_slot < game.players) {
-			int ls = s_my_primary_slot;
-			mnet_send_player_state(
-				players[ls].x, players[ls].y, players[ls].z,
-				players[ls].ry,
-				(int16_t)(players[ls].physics_speed * 256.0f),
-				players[ls].laps,
-				players[ls].current_checkpoint,
-				players[ls].current_waypoint,
-				players[ls].dist_to_next_waypoint);
-		}
-		if (s_my_p2_slot >= 0 && s_my_p2_slot < game.players) {
-			int ls = s_my_p2_slot;
-			mnet_send_player_state_p2(
-				players[ls].x, players[ls].y, players[ls].z,
-				players[ls].ry,
-				(int16_t)(players[ls].physics_speed * 256.0f),
-				players[ls].laps,
-				players[ls].current_checkpoint,
-				players[ls].current_waypoint,
-				players[ls].dist_to_next_waypoint);
+		 * array index — wrong slot whenever pid != local index, which
+		 * is the typical 2H case. */
+		{
+			int primary_ls = -1, p2_ls = -1;
+			int sp;
+			for (sp = 0; sp < game.players && sp < MNET_MAX_PLAYERS; sp++) {
+				if (!s_is_local[sp]) continue;
+				if (s_net_player_id[sp] == g_mnet.my_player_id)
+					primary_ls = sp;
+				else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
+				         s_net_player_id[sp] == g_mnet.my_player_id_2)
+					p2_ls = sp;
+			}
+			if (primary_ls >= 0) {
+				int ls = primary_ls;
+				mnet_send_player_state(
+					players[ls].x, players[ls].y, players[ls].z,
+					players[ls].ry,
+					(int16_t)(players[ls].physics_speed * 256.0f),
+					players[ls].laps,
+					players[ls].current_checkpoint,
+					players[ls].current_waypoint,
+					players[ls].dist_to_next_waypoint);
+			}
+			if (p2_ls >= 0) {
+				int ls = p2_ls;
+				mnet_send_player_state_p2(
+					players[ls].x, players[ls].y, players[ls].z,
+					players[ls].ry,
+					(int16_t)(players[ls].physics_speed * 256.0f),
+					players[ls].laps,
+					players[ls].current_checkpoint,
+					players[ls].current_waypoint,
+					players[ls].dist_to_next_waypoint);
+			}
 		}
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
