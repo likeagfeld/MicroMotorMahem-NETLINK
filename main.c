@@ -199,6 +199,7 @@ extern Uint8 cam_mode;
 extern Uint8 saved_cam_mode;
 extern Uint8 current_players;
 extern Uint8 cd_track;
+extern Uint8 target_player;  /* HUD/camera follows players[target_player] */
 /* CDDA state — title screen leaves track 2 playing; we must stop it before
  * doing any jo_fs_read_file or jo_sprite_add_tga_tileset because the CD
  * block can't service ISO reads while the audio decoder owns the head. */
@@ -303,6 +304,35 @@ void mmm_online_start_race(void)
      * load_car loop at main.c:6877/6935. */
     create_player();
     MNET_LOG_INFO("PHASE_B CREATE_PLAYER_OK");
+
+    /* Re-assign gamepad slots based on which players[] are LOCAL on this
+     * Saturn. create_player's offline pattern (slot 0 -> gamepad 0,
+     * slot 1 -> gamepad 15 for 2P split) is wrong for online: when the
+     * server gives the OTHER player pid=1 and you pid=2, you end up in
+     * players[1] but your controller is on port A (slot 0), not 15.
+     * Camera/HUD also default to target_player=0 which would be the
+     * remote player. Both fixed here: walk our local mapping and pin
+     * P1=gamepad 0, P2=gamepad 15, others to harmless slot 7. */
+    {
+        int my_primary_slot = -1;
+        int my_p2_slot = -1;
+        int qp;
+        for (qp = 0; qp < game.players && qp < 4; qp++) {
+            if (s_is_local[qp]) {
+                if (s_net_player_id[qp] == g_mnet.my_player_id)
+                    my_primary_slot = qp;
+                else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
+                         s_net_player_id[qp] == g_mnet.my_player_id_2)
+                    my_p2_slot = qp;
+            }
+        }
+        for (qp = 0; qp < game.players && qp < 4; qp++) {
+            if (qp == my_primary_slot)        players[qp].gamepad = 0;
+            else if (qp == my_p2_slot)        players[qp].gamepad = 15;
+            else                              players[qp].gamepad = 7;
+        }
+        if (my_primary_slot >= 0) target_player = (Uint8)my_primary_slot;
+    }
 
     for (p = 0; p < game.players && p < 4; p++) {
         Uint8 car = g_mnet.lobby_players[p].car_id;
