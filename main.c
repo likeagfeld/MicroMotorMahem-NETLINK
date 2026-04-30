@@ -4079,7 +4079,7 @@ for (unsigned int s = 0; s< model_total; s++)
 			//g_count = 0;
 			}else
 			{
-			att_tex = MAP_TILESET+att_tex;
+			att_tex = game.map_sprite_id+att_tex;
 			}
 			
 			if(att_meshOn == 1)
@@ -4258,7 +4258,7 @@ for (unsigned int s = 0; s< model_total; s++)
 				nxt+=4;
 				if(strcmp(filename, "CARS.BIN") != 0)
 				{
-				att_tex = MAP_TILESET+att_tex;
+				att_tex = game.map_sprite_id+att_tex;
 				}
 				
 				if(att_meshOn == 1)
@@ -4957,8 +4957,8 @@ void			    object_viewer(void)
 			current_object->attbl[object_last_pol_num].texno = object_last_texture;
 			current_object->attbl[object_last_pol_num].colno = LUTidx(object_last_texture);
 			object_last_texture = (Uint16) current_object->attbl[object_pol_num].texno;
-			current_object->attbl[object_pol_num].texno = MAP_TILESET+19;
-			current_object->attbl[object_pol_num].colno = LUTidx(MAP_TILESET+19);
+			current_object->attbl[object_pol_num].texno = game.map_sprite_id+19;
+			current_object->attbl[object_pol_num].colno = LUTidx(game.map_sprite_id+19);
 			
 		}
 		
@@ -4975,8 +4975,8 @@ void			    object_viewer(void)
 				object_pol_num = 0;
 				object_last_texture = (Uint16) current_object->attbl[object_pol_num].texno;
 				object_last_pol_num = object_pol_num;
-				current_object->attbl[object_pol_num].texno = MAP_TILESET+19;
-				current_object->attbl[object_pol_num].colno = LUTidx(MAP_TILESET+19);
+				current_object->attbl[object_pol_num].texno = game.map_sprite_id+19;
+				current_object->attbl[object_pol_num].colno = LUTidx(game.map_sprite_id+19);
 			}
 		}
 		
@@ -5189,15 +5189,15 @@ void            title_screen(void)
 	slPopMatrix();
 	
 	//logo
-	jo_sprite_draw3D(MAP_TILESET+2,-72, -48, 100);
-	jo_sprite_draw3D(MAP_TILESET+3,-24, -48, 100);
-	jo_sprite_draw3D(MAP_TILESET+4,24, -48, 100);
-	jo_sprite_draw3D(MAP_TILESET+5,72, -48, 100);
+	jo_sprite_draw3D(game.map_sprite_id+2,-72, -48, 100);
+	jo_sprite_draw3D(game.map_sprite_id+3,-24, -48, 100);
+	jo_sprite_draw3D(game.map_sprite_id+4,24, -48, 100);
+	jo_sprite_draw3D(game.map_sprite_id+5,72, -48, 100);
 	
-	jo_sprite_draw3D(MAP_TILESET+6,-72, 0, 100);
-	jo_sprite_draw3D(MAP_TILESET+7,-24, 0, 100);
-	jo_sprite_draw3D(MAP_TILESET+8,24, 0, 100);
-	jo_sprite_draw3D(MAP_TILESET+9,72, 0, 100);
+	jo_sprite_draw3D(game.map_sprite_id+6,-72, 0, 100);
+	jo_sprite_draw3D(game.map_sprite_id+7,-24, 0, 100);
+	jo_sprite_draw3D(game.map_sprite_id+8,24, 0, 100);
+	jo_sprite_draw3D(game.map_sprite_id+9,72, 0, 100);
 	
 	//background model	
 
@@ -6716,9 +6716,9 @@ void			    player_select(void)
 }
 slPopMatrix();
 		
-		jo_sprite_draw3D(MAP_TILESET+14,-48, 74, 1000);
-		jo_sprite_draw3D(MAP_TILESET+14,0, 74, 1000);
-		jo_sprite_draw3D(MAP_TILESET+14,48, 74, 1000);
+		jo_sprite_draw3D(game.map_sprite_id+14,-48, 74, 1000);
+		jo_sprite_draw3D(game.map_sprite_id+14,0, 74, 1000);
+		jo_sprite_draw3D(game.map_sprite_id+14,48, 74, 1000);
 		
 		render_CLUT_sprite(PLAYER_TILESET + 25,45,68,200);
 		render_CLUT_sprite(PLAYER_TILESET + 25,45,69,200);
@@ -6816,9 +6816,9 @@ slCurWindow(winNear);
 	}
 	slPopMatrix();
    	
-		jo_sprite_draw3D(MAP_TILESET+14,-48, 74, 1000);
-		jo_sprite_draw3D(MAP_TILESET+14,0, 74, 1000);
-		jo_sprite_draw3D(MAP_TILESET+14,48, 74, 1000);
+		jo_sprite_draw3D(game.map_sprite_id+14,-48, 74, 1000);
+		jo_sprite_draw3D(game.map_sprite_id+14,0, 74, 1000);
+		jo_sprite_draw3D(game.map_sprite_id+14,48, 74, 1000);
 		
 		render_CLUT_sprite(PLAYER2_TILESET + 25,45,68,200);
 		render_CLUT_sprite(PLAYER2_TILESET + 25,45,69,200);
@@ -7185,20 +7185,20 @@ void            level_select(void)
 	jo_sprite_set_palette(font_pal.id);
 
 	//logo
-	jo_sprite_draw3D(MAP_TILESET+2,-72, -98, 100);
-	jo_sprite_draw3D(MAP_TILESET+3,-24, -98, 100);
-	jo_sprite_draw3D(MAP_TILESET+4,24, -98, 100);
-	jo_sprite_draw3D(MAP_TILESET+5,72, -98, 100);
+	jo_sprite_draw3D(game.map_sprite_id+2,-72, -98, 100);
+	jo_sprite_draw3D(game.map_sprite_id+3,-24, -98, 100);
+	jo_sprite_draw3D(game.map_sprite_id+4,24, -98, 100);
+	jo_sprite_draw3D(game.map_sprite_id+5,72, -98, 100);
 	
-	jo_sprite_draw3D(MAP_TILESET+6,-72, -50, 100);
-	jo_sprite_draw3D(MAP_TILESET+7,-24, -50, 100);
-	jo_sprite_draw3D(MAP_TILESET+8,24, -50, 100);
-	jo_sprite_draw3D(MAP_TILESET+9,72, -50, 100);
+	jo_sprite_draw3D(game.map_sprite_id+6,-72, -50, 100);
+	jo_sprite_draw3D(game.map_sprite_id+7,-24, -50, 100);
+	jo_sprite_draw3D(game.map_sprite_id+8,24, -50, 100);
+	jo_sprite_draw3D(game.map_sprite_id+9,72, -50, 100);
 	
-	jo_sprite_draw3D(MAP_TILESET+14,-72, 74, 100);
-	jo_sprite_draw3D(MAP_TILESET+14,-24, 74, 100);
-	jo_sprite_draw3D(MAP_TILESET+14,24, 74, 100);
-	jo_sprite_draw3D(MAP_TILESET+14,72, 74, 100);
+	jo_sprite_draw3D(game.map_sprite_id+14,-72, 74, 100);
+	jo_sprite_draw3D(game.map_sprite_id+14,-24, 74, 100);
+	jo_sprite_draw3D(game.map_sprite_id+14,24, 74, 100);
+	jo_sprite_draw3D(game.map_sprite_id+14,72, 74, 100);
 	
 	//level name
 	jo_nbg2_printf(10, 22, "             ");
