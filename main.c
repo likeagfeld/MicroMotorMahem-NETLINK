@@ -199,7 +199,6 @@ extern Uint8 cam_mode;
 extern Uint8 saved_cam_mode;
 extern Uint8 current_players;
 extern Uint8 cd_track;
-extern Uint8 target_player;  /* HUD/camera follows players[target_player] */
 /* CDDA state — title screen leaves track 2 playing; we must stop it before
  * doing any jo_fs_read_file or jo_sprite_add_tga_tileset because the CD
  * block can't service ISO reads while the audio decoder owns the head. */
@@ -304,52 +303,6 @@ void mmm_online_start_race(void)
      * load_car loop at main.c:6877/6935. */
     create_player();
     MNET_LOG_INFO("PHASE_B CREATE_PLAYER_OK");
-
-    /* Re-assign gamepad slots based on which players[] are LOCAL on this
-     * Saturn. create_player's offline pattern (slot 0 -> gamepad 0,
-     * slot 1 -> gamepad 15 for 2P split) is wrong for online: when the
-     * server gives the OTHER player pid=1 and you pid=2, you end up in
-     * players[1] but your controller is on port A (slot 0), not 15.
-     * Camera/HUD also default to target_player=0 which would be the
-     * remote player. Both fixed here: walk our local mapping and pin
-     * P1=gamepad 0, P2=gamepad 15, others to harmless slot 7. */
-    /* Match local slot purely by net pid — don't gate on s_is_local because
-     * the backstop earlier in this function uses my_player_id as an array
-     * index (wrong: it's a net pid 1..255 not a 0..3 slot), so s_is_local
-     * is sometimes set on the wrong slot. Net pid → slot lookup is correct
-     * because s_net_player_id was populated directly from lobby_players[]. */
-    {
-        int my_primary_slot = -1;
-        int my_p2_slot = -1;
-        int qp;
-        for (qp = 0; qp < game.players && qp < 4; qp++) {
-            if (s_net_player_id[qp] == g_mnet.my_player_id)
-                my_primary_slot = qp;
-            else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
-                     s_net_player_id[qp] == g_mnet.my_player_id_2)
-                my_p2_slot = qp;
-        }
-        /* Fallback: if for whatever reason we never found ourselves in the
-         * roster (shouldn't happen but be safe), default to slot 0 so the
-         * player at least has SOMETHING to drive. */
-        if (my_primary_slot < 0) my_primary_slot = 0;
-
-        /* Now also fix s_is_local to actually reflect "is this slot mine"
-         * since downstream code (my_gamepad's gamepad-redirect, the
-         * remote-state hard-snap, the lap-complete sender) relies on it. */
-        for (qp = 0; qp < game.players && qp < 4; qp++) {
-            s_is_local[qp] = (qp == my_primary_slot) || (qp == my_p2_slot);
-        }
-
-        /* Pin gamepads: P1 port for our primary, P2 port for our local-coop
-         * slot, harmless empty port for everyone else. */
-        for (qp = 0; qp < game.players && qp < 4; qp++) {
-            if (qp == my_primary_slot)        players[qp].gamepad = 0;
-            else if (qp == my_p2_slot)        players[qp].gamepad = 15;
-            else                              players[qp].gamepad = 7;
-        }
-        target_player = (Uint8)my_primary_slot;
-    }
 
     for (p = 0; p < game.players && p < 4; p++) {
         Uint8 car = g_mnet.lobby_players[p].car_id;
@@ -4079,7 +4032,7 @@ for (unsigned int s = 0; s< model_total; s++)
 			//g_count = 0;
 			}else
 			{
-			att_tex = game.map_sprite_id+att_tex;
+			att_tex = MAP_TILESET+att_tex;
 			}
 			
 			if(att_meshOn == 1)
@@ -4258,7 +4211,7 @@ for (unsigned int s = 0; s< model_total; s++)
 				nxt+=4;
 				if(strcmp(filename, "CARS.BIN") != 0)
 				{
-				att_tex = game.map_sprite_id+att_tex;
+				att_tex = MAP_TILESET+att_tex;
 				}
 				
 				if(att_meshOn == 1)
@@ -4957,8 +4910,8 @@ void			    object_viewer(void)
 			current_object->attbl[object_last_pol_num].texno = object_last_texture;
 			current_object->attbl[object_last_pol_num].colno = LUTidx(object_last_texture);
 			object_last_texture = (Uint16) current_object->attbl[object_pol_num].texno;
-			current_object->attbl[object_pol_num].texno = game.map_sprite_id+19;
-			current_object->attbl[object_pol_num].colno = LUTidx(game.map_sprite_id+19);
+			current_object->attbl[object_pol_num].texno = MAP_TILESET+19;
+			current_object->attbl[object_pol_num].colno = LUTidx(MAP_TILESET+19);
 			
 		}
 		
@@ -4975,8 +4928,8 @@ void			    object_viewer(void)
 				object_pol_num = 0;
 				object_last_texture = (Uint16) current_object->attbl[object_pol_num].texno;
 				object_last_pol_num = object_pol_num;
-				current_object->attbl[object_pol_num].texno = game.map_sprite_id+19;
-				current_object->attbl[object_pol_num].colno = LUTidx(game.map_sprite_id+19);
+				current_object->attbl[object_pol_num].texno = MAP_TILESET+19;
+				current_object->attbl[object_pol_num].colno = LUTidx(MAP_TILESET+19);
 			}
 		}
 		
@@ -5189,15 +5142,15 @@ void            title_screen(void)
 	slPopMatrix();
 	
 	//logo
-	jo_sprite_draw3D(game.map_sprite_id+2,-72, -48, 100);
-	jo_sprite_draw3D(game.map_sprite_id+3,-24, -48, 100);
-	jo_sprite_draw3D(game.map_sprite_id+4,24, -48, 100);
-	jo_sprite_draw3D(game.map_sprite_id+5,72, -48, 100);
+	jo_sprite_draw3D(MAP_TILESET+2,-72, -48, 100);
+	jo_sprite_draw3D(MAP_TILESET+3,-24, -48, 100);
+	jo_sprite_draw3D(MAP_TILESET+4,24, -48, 100);
+	jo_sprite_draw3D(MAP_TILESET+5,72, -48, 100);
 	
-	jo_sprite_draw3D(game.map_sprite_id+6,-72, 0, 100);
-	jo_sprite_draw3D(game.map_sprite_id+7,-24, 0, 100);
-	jo_sprite_draw3D(game.map_sprite_id+8,24, 0, 100);
-	jo_sprite_draw3D(game.map_sprite_id+9,72, 0, 100);
+	jo_sprite_draw3D(MAP_TILESET+6,-72, 0, 100);
+	jo_sprite_draw3D(MAP_TILESET+7,-24, 0, 100);
+	jo_sprite_draw3D(MAP_TILESET+8,24, 0, 100);
+	jo_sprite_draw3D(MAP_TILESET+9,72, 0, 100);
 	
 	//background model	
 
@@ -6716,9 +6669,9 @@ void			    player_select(void)
 }
 slPopMatrix();
 		
-		jo_sprite_draw3D(game.map_sprite_id+14,-48, 74, 1000);
-		jo_sprite_draw3D(game.map_sprite_id+14,0, 74, 1000);
-		jo_sprite_draw3D(game.map_sprite_id+14,48, 74, 1000);
+		jo_sprite_draw3D(MAP_TILESET+14,-48, 74, 1000);
+		jo_sprite_draw3D(MAP_TILESET+14,0, 74, 1000);
+		jo_sprite_draw3D(MAP_TILESET+14,48, 74, 1000);
 		
 		render_CLUT_sprite(PLAYER_TILESET + 25,45,68,200);
 		render_CLUT_sprite(PLAYER_TILESET + 25,45,69,200);
@@ -6816,9 +6769,9 @@ slCurWindow(winNear);
 	}
 	slPopMatrix();
    	
-		jo_sprite_draw3D(game.map_sprite_id+14,-48, 74, 1000);
-		jo_sprite_draw3D(game.map_sprite_id+14,0, 74, 1000);
-		jo_sprite_draw3D(game.map_sprite_id+14,48, 74, 1000);
+		jo_sprite_draw3D(MAP_TILESET+14,-48, 74, 1000);
+		jo_sprite_draw3D(MAP_TILESET+14,0, 74, 1000);
+		jo_sprite_draw3D(MAP_TILESET+14,48, 74, 1000);
 		
 		render_CLUT_sprite(PLAYER2_TILESET + 25,45,68,200);
 		render_CLUT_sprite(PLAYER2_TILESET + 25,45,69,200);
@@ -7185,20 +7138,20 @@ void            level_select(void)
 	jo_sprite_set_palette(font_pal.id);
 
 	//logo
-	jo_sprite_draw3D(game.map_sprite_id+2,-72, -98, 100);
-	jo_sprite_draw3D(game.map_sprite_id+3,-24, -98, 100);
-	jo_sprite_draw3D(game.map_sprite_id+4,24, -98, 100);
-	jo_sprite_draw3D(game.map_sprite_id+5,72, -98, 100);
+	jo_sprite_draw3D(MAP_TILESET+2,-72, -98, 100);
+	jo_sprite_draw3D(MAP_TILESET+3,-24, -98, 100);
+	jo_sprite_draw3D(MAP_TILESET+4,24, -98, 100);
+	jo_sprite_draw3D(MAP_TILESET+5,72, -98, 100);
 	
-	jo_sprite_draw3D(game.map_sprite_id+6,-72, -50, 100);
-	jo_sprite_draw3D(game.map_sprite_id+7,-24, -50, 100);
-	jo_sprite_draw3D(game.map_sprite_id+8,24, -50, 100);
-	jo_sprite_draw3D(game.map_sprite_id+9,72, -50, 100);
+	jo_sprite_draw3D(MAP_TILESET+6,-72, -50, 100);
+	jo_sprite_draw3D(MAP_TILESET+7,-24, -50, 100);
+	jo_sprite_draw3D(MAP_TILESET+8,24, -50, 100);
+	jo_sprite_draw3D(MAP_TILESET+9,72, -50, 100);
 	
-	jo_sprite_draw3D(game.map_sprite_id+14,-72, 74, 100);
-	jo_sprite_draw3D(game.map_sprite_id+14,-24, 74, 100);
-	jo_sprite_draw3D(game.map_sprite_id+14,24, 74, 100);
-	jo_sprite_draw3D(game.map_sprite_id+14,72, 74, 100);
+	jo_sprite_draw3D(MAP_TILESET+14,-72, 74, 100);
+	jo_sprite_draw3D(MAP_TILESET+14,-24, 74, 100);
+	jo_sprite_draw3D(MAP_TILESET+14,24, 74, 100);
+	jo_sprite_draw3D(MAP_TILESET+14,72, 74, 100);
 	
 	//level name
 	jo_nbg2_printf(10, 22, "             ");
