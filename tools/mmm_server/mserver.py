@@ -45,6 +45,15 @@ log = logging.getLogger("mmm_server")
 # ==========================================================================
 
 HEARTBEAT_TIMEOUT = 60.0
+# Stall detection: a player who hasn't advanced lap or checkpoint in this
+# many seconds is marked DNF so the race can end. Catches scenarios where
+# a car gets stuck against geometry, a player AFK's, or a connection
+# stays alive (heartbeats fine) but no race progress is being made.
+STALL_TIMEOUT = 90.0
+# Hard cap on race wall-clock duration. Prevents 1H+1B sessions where
+# the bot's procedural-oval AI never finishes from running forever.
+# Default 10 minutes — generous for 3-lap tracks.
+MAX_RACE_DURATION = 600.0
 MAX_RECV_BUFFER = 8192
 USERNAME_MAX_LEN = 16
 UUID_LEN = 36
@@ -572,6 +581,10 @@ class Player:
         self.last_input_bits = 0
         self.last_input_frame = 0
         self.last_state_recv_time = 0.0
+        # Stall detection: wall-clock seconds of last forward progress
+        # (lap or checkpoint advance). Used by GameSimulation.tick_stall
+        # to mark a no-progress player as DNF after a timeout.
+        self.last_progress_time = 0.0
 
 
 # BotPlayer ports MicroMotorMayhem's cpu_control() AI from main.c:5159-5350 verbatim:
@@ -889,6 +902,7 @@ class GameSimulation:
         p.dnf = False
         p.finished = False
         p.finish_time = 0.0
+        p.last_progress_time = time.time()
 
     def handle_player_state(self, pid: int, x: int, y: int, z: int,
                             ry: int, speed: int,
@@ -906,6 +920,12 @@ class GameSimulation:
         p.current_waypoint = cur_wp
         p.dist_to_next_waypoint = dist_wp
         p.last_state_recv_time = time.time()
+        # Track forward progress for stall-detection: any checkpoint or lap
+        # advance bumps last_progress_time. tick_stall() marks players who
+        # haven't progressed in STALL_TIMEOUT as DNF so the race can end.
+        if cp > p.current_checkpoint or lap > p.lap:
+            p.last_progress_time = time.time()
+            p.current_checkpoint = cp
         # Implicit lap progression: if client's lap is exactly p.lap+1, accept
         # it. Covers local-coop P2 (whose LAP_COMPLETE has no pid byte and
         # would be misattributed to P1) and any case where LAP_COMPLETE is
@@ -913,6 +933,7 @@ class GameSimulation:
         if not p.dnf and not p.finished and lap == p.lap + 1:
             p.lap = lap
             p.current_checkpoint = 0
+            p.last_progress_time = time.time()
             if p.lap >= self.lap_count:
                 p.finished = True
                 p.finish_time = time.time()
@@ -933,6 +954,7 @@ class GameSimulation:
             return (False, None, False)
         p.lap = lap
         p.current_checkpoint = 0
+        p.last_progress_time = time.time()
         if lap_time > 0 and (p.best_lap_time == 0 or lap_time < p.best_lap_time):
             p.best_lap_time = lap_time
         finished = False
@@ -1019,11 +1041,42 @@ class GameSimulation:
                 bot.relay_force_counter = 0
         return events
 
+    def tick_stall(self):
+        """Promote stalled / over-time players to DNF so check_race_finish
+        can eventually return a winner. Two policies:
+          - per-player stall: no checkpoint/lap progress for STALL_TIMEOUT sec
+          - global cap: race wall-clock > MAX_RACE_DURATION
+        """
+        now = time.time()
+        # Hard duration cap: if exceeded, ALL non-finished players become DNF.
+        if (self.match_started_at > 0 and
+                now - self.match_started_at > MAX_RACE_DURATION):
+            for p in self.players.values():
+                if not p.finished and not p.dnf:
+                    p.dnf = True
+            return
+        # Per-player stall: only mark the stalled one DNF; others keep racing.
+        for p in self.players.values():
+            if p.finished or p.dnf:
+                continue
+            # Bots use a different progression path (update_waypoint), not
+            # last_progress_time — exclude them from stall detection.
+            if p.is_bot:
+                continue
+            if p.last_progress_time <= 0:
+                continue  # no baseline yet; skip
+            if now - p.last_progress_time > STALL_TIMEOUT:
+                log.info("Player pid=%d stalled (no progress for %.1fs) — DNF",
+                         p.player_id, now - p.last_progress_time)
+                p.dnf = True
+
     def check_race_finish(self) -> tuple:
         """Returns (winner_id, standings) or (None, None) if not finished.
         Race is over when:
           - any human reaches lap_count (cross line on final lap), OR
           - all non-DNF, non-finished players are bots (humans all DNF/done)
+        Stall/timeout DNFs flow through tick_stall above into the same
+        terminal-state check here.
         """
         if self.race_finished:
             return (None, None)
@@ -1918,6 +1971,9 @@ class MMMServer:
             self._broadcast_to_game(sync_msg)
 
         # Race finish detection
+        # Stall / max-duration check before finish detection so DNF'd
+        # players are visible to check_race_finish on the same tick.
+        self.sim.tick_stall()
         winner_id, standings = self.sim.check_race_finish()
         if winner_id is not None and standings is not None:
             self._announce_race_finish(winner_id, standings)
