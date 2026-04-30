@@ -5906,7 +5906,7 @@ void			my_gamepad(void)
 	
 	
 	
-		if (KEY_DOWN(0,PER_DGT_ST) && game.game_state != GAMESTATE_RACE_START)
+		if (KEY_DOWN(0,PER_DGT_ST) && game.game_state != GAMESTATE_RACE_START && !g_online_mode)
 	 {
 		 if(game.pressed_start == false)
 			{
