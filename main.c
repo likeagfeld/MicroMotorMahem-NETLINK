@@ -5427,7 +5427,24 @@ void		cpu_control(void)
 				players[my_id].current_waypoint,
 				players[my_id].dist_to_next_waypoint);
 		}
-		/* P2 send deferred to a future build. */
+		/* P2 (local-coop): find OUR other local slot and broadcast its state. */
+		if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID) {
+			int sp;
+			for (sp = 0; sp < 4; sp++) {
+				if (s_is_local[sp] && sp != target_player &&
+				    sp < game.players) {
+					mnet_send_player_state_p2(
+						players[sp].x, players[sp].y, players[sp].z,
+						players[sp].ry,
+						(int16_t)(players[sp].physics_speed * 256.0f),
+						players[sp].laps,
+						players[sp].current_checkpoint,
+						players[sp].current_waypoint,
+						players[sp].dist_to_next_waypoint);
+					break;
+				}
+			}
+		}
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;

@@ -265,7 +265,7 @@ static void handle_input(void)
 void name_entry_screen(void)
 {
     int row;
-    int gridX = 8;
+    int gridX = 6;
     int gridY = 9;
 
     if (mmm_get_game_state() != GAMESTATE_NAME_ENTRY) {
@@ -280,77 +280,55 @@ void name_entry_screen(void)
     /* Title */
     jo_nbg2_printf(13, 4, "ENTER NAME");
 
-    /* Grid - 3-char-wide cells. Cursor rendered as ">X<" since the NBG2
-     * font (set at main.c:7278 to " 0-9 A-Z !\"?=%&',.()*+-/<>") does NOT
-     * include '[' or ']'. The bracket approach left an invisible cursor.
-     * '<' and '>' ARE in the font and render reliably. */
+    /* Disasteroids/Flicky-style: each row is one space-separated string,
+     * '>' left-marker on active row, '-' underline below the selected
+     * char. Fits the 40-cell NBG2 width with no clipping; no per-cell
+     * brackets, no right-side mirror panel. */
     {
-        int r, c, cx, len;
-        for (r = 0; r < 4; r++) {
-            len = getRowLen(r);
-            for (c = 0; c < len; c++) {
-                cx = gridX + c * 3;
-                char ch = getGridChar(r, c);
-                if (r == g_cursor_row && c == g_cursor_col) {
-                    jo_nbg2_printf(cx, gridY + (r * 2), ">%c<", ch);
-                } else {
-                    jo_nbg2_printf(cx, gridY + (r * 2), " %c ", ch);
-                }
-            }
-            /* clear trailing positions if previous frame had wider row */
-            for (; c < 10; c++) {
-                cx = gridX + c * 3;
-                jo_nbg2_printf(cx, gridY + (r * 2), "   ");
-            }
-        }
-
-        /* Row 4: . - DEL OK  (':' isn't in the font; using '-' as the
-         * second punctuation slot. Cursor uses '>X<' style as above.) */
-        {
-            int row4Y = gridY + 8;
-            int xpos = gridX;
-            /* slot 0: '.' (3-wide) */
-            jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == 0) ? ">.<" : " . ");
-            xpos += 4;
-            /* slot 1: '-' (3-wide) -- replaces ':' (not in font) */
-            jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == 1) ? ">-<" : " - ");
-            xpos += 4;
-            /* slot 2: DEL (5-wide) */
-            jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == ROW4_DEL) ? ">DEL<" : " DEL ");
-            xpos += 6;
-            /* slot 3: OK (5-wide for symmetry) */
-            jo_nbg2_printf(xpos, row4Y,
-                (g_cursor_row == 4 && g_cursor_col == ROW4_OK) ? ">OK<" : " OK ");
+        static const char* row_text[5] = {
+            "A B C D E F G H I",
+            "J K L M N O P Q R",
+            "S T U V W X Y Z",
+            "0 1 2 3 4 5 6 7 8 9",
+            ".  -  DEL  OK"
+        };
+        int r;
+        for (r = 0; r < 5; r++) {
+            jo_nbg2_printf(gridX, gridY + (r * 2), "%-22s", row_text[r]);
         }
     }
 
-    /* Row marker on left side - '>' is in the font */
+    /* '>' marker on left of active row, ' ' on others. */
     for (row = 0; row < GRID_ROWS; row++) {
         int rowY = gridY + (row * 2);
         jo_nbg2_printf(gridX - 2, rowY, (row == g_cursor_row) ? ">" : " ");
     }
 
-    /* Selection indicator on right */
+    /* '-' underline below the selected character. Each char in rows 0-3
+     * occupies 2 cells ('A '). Row 4 widths: '.'=1@0, '-'=1@3, 'DEL'=3@6,
+     * 'OK'=2@11 — match the row_text spacing. */
     {
-        int selY;
-        for (row = 0; row < GRID_ROWS; row++) {
-            if (row != g_cursor_row)
-                jo_nbg2_printf(28, gridY + (row * 2), "      ");
+        int rowR;
+        for (rowR = 0; rowR < GRID_ROWS; rowR++) {
+            jo_nbg2_printf(gridX - 1, gridY + (rowR * 2) + 1,
+                "                       ");  /* clear */
         }
-        selY = gridY + (g_cursor_row * 2);
+        int underlineY = gridY + (g_cursor_row * 2) + 1;
         if (g_cursor_row < 4) {
-            char selChar = getGridChar(g_cursor_row, g_cursor_col);
-            if (selChar) jo_nbg2_printf(28, selY, ">%c<   ", selChar);
+            int cx = gridX + (g_cursor_col * 2);
+            jo_nbg2_printf(cx, underlineY, "-");
         } else {
-            static const char* labels[] = { ">.<   ", ">-<   ", ">DEL< ", ">OK<  " };
-            jo_nbg2_printf(28, selY, "%s", labels[g_cursor_col]);
+            static const int row4_off[ROW4_COUNT] = { 0, 3, 6, 11 };
+            static const int row4_w[ROW4_COUNT]   = { 1, 1, 3, 2 };
+            int i;
+            for (i = 0; i < row4_w[g_cursor_col]; i++) {
+                jo_nbg2_printf(gridX + row4_off[g_cursor_col] + i,
+                               underlineY, "-");
+            }
         }
     }
 
-    /* Current entry. ':' replaced with space (not in font). */
+    /* Current entry. */
     jo_nbg2_printf(8, 22, "NAME %-8s", g_name_buf);
 
     /* Controls hint. '/' IS in font; ':' is NOT - replaced with space. */
