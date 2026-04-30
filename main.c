@@ -247,10 +247,11 @@ void mmm_online_start_race(void)
     if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID && g_mnet.my_player_id_2 < 4)
         s_is_local[g_mnet.my_player_id_2] = true;
 
-    /* Resolve OUR slots by net pid (not slot-as-pid backstop above which
-     * uses pid as array index — wrong for pid != slot). Single-pass loop
-     * fixes is_local + gamepad + target_player together to keep code size
-     * small (binary growth here can break title rendering on hardware). */
+    /* Resolve s_is_local + target_player by net pid (not slot-as-pid
+     * backstop above which uses pid as index — wrong for pid != slot).
+     * GAMEPAD pinning is deferred until AFTER create_player runs below
+     * because create_player rewrites players[].gamepad with its offline
+     * 0/15 pattern (or 0/1/2/3 for 4P) which clobbers any earlier value. */
     {
         int qp, primary = 0;
         for (qp = 0; qp < 4; qp++) {
@@ -258,7 +259,6 @@ void mmm_online_start_race(void)
             bool me2 = (s_net_player_id[qp] == g_mnet.my_player_id_2 &&
                         g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID);
             s_is_local[qp] = me1 || me2;
-            players[qp].gamepad = me1 ? 0 : (me2 ? 15 : 7);
             if (me1) primary = qp;
         }
         target_player = (Uint8)primary;
@@ -321,6 +321,19 @@ void mmm_online_start_race(void)
      * load_car loop at main.c:6877/6935. */
     create_player();
     MNET_LOG_INFO("PHASE_B CREATE_PLAYER_OK");
+
+    /* Pin gamepads AFTER create_player (which would otherwise clobber
+     * them with its offline pad_number scheme — slot 0 -> port 0,
+     * slot 1 -> port 15 for 2P, or 0/1/2/3 for 4P, both wrong when
+     * the local user isn't slot 0). */
+    {
+        int qp;
+        for (qp = 0; qp < 4; qp++) {
+            if (qp == target_player)        players[qp].gamepad = 0;
+            else if (s_is_local[qp])        players[qp].gamepad = 15;
+            else                            players[qp].gamepad = 7;
+        }
+    }
 
     for (p = 0; p < game.players && p < 4; p++) {
         Uint8 car = g_mnet.lobby_players[p].car_id;
@@ -3160,25 +3173,24 @@ void draw_hud(void)
 		jo_nbg2_printf(1, 1,  "TIME");
 		jo_nbg2_printf(1, 3,  "%02d.%02d", players[target_player].mins,players[target_player].secs);
 		}
-		//laps
-		//jo_sprite_enable_half_transparency();
-		jo_sprite_draw3D(game.hud_sprite_id + 4,-140, 103, 100);
+		//laps — shifted up from y=103 to y=95 so the 2x-scaled digits
+		//don't clip the bottom of the screen on real Saturn (sprite is
+		//~32px tall at scale 2; y=103 + 16 = bottom-line-119 > visible 112).
+		jo_sprite_draw3D(game.hud_sprite_id + 4,-140, 95, 100);
 		jo_sprite_change_sprite_scale(2);
 		if(players[target_player].laps>9)
-		{		
-		//divide laps by 10 to get first digit
+		{
 		p1_laps = players[target_player].laps/10;
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 103, 100);
-		//get modulus 10 to get second digit and move original sprite to right by 16
-		p1_laps = players[target_player].laps % 10;		
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-68, 103, 100);
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 95, 100);
+		p1_laps = players[target_player].laps % 10;
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-68, 95, 100);
 		}else
 		{
-		p1_laps = players[target_player].laps;	
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 103, 100);
+		p1_laps = players[target_player].laps;
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 95, 100);
 		}
 		//positon
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + players[target_player].position,128, 103, 100);
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + players[target_player].position,128, 95, 100);
 		
 		jo_sprite_restore_sprite_scale();
 		//jo_sprite_disable_half_transparency();	
