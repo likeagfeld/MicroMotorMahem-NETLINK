@@ -77,6 +77,12 @@ char g_player_name_2[17] = {0};
 static bool    s_is_local[4]      = { true, true, true, true };
 static Uint8   s_net_player_id[4] = { 0xFF, 0xFF, 0xFF, 0xFF };
 static bool    s_is_bot[4]        = { false, false, false, false };
+/* Slot index of OUR primary local player (and optional local-coop P2)
+ * after lobby resolution. Used by PLAYER_STATE producer so it sends our
+ * actual position to the server, not players[my_player_id] which uses
+ * the server net pid as array index — that reads the wrong slot. */
+static int     s_my_primary_slot = 0;
+static int     s_my_p2_slot      = -1;
 
 /* NetLink modem board control register (front-panel LED).
  * Same address used by Disasteroids and Japanese XBAND games. */
@@ -313,42 +319,37 @@ void mmm_online_start_race(void)
      * Camera/HUD also default to target_player=0 which would be the
      * remote player. Both fixed here: walk our local mapping and pin
      * P1=gamepad 0, P2=gamepad 15, others to harmless slot 7. */
-    /* Match local slot purely by net pid — don't gate on s_is_local because
-     * the backstop earlier in this function uses my_player_id as an array
-     * index (wrong: it's a net pid 1..255 not a 0..3 slot), so s_is_local
-     * is sometimes set on the wrong slot. Net pid → slot lookup is correct
-     * because s_net_player_id was populated directly from lobby_players[]. */
+    /* Match local slot purely by net pid; cache in module statics so
+     * PLAYER_STATE producer can read players[s_my_primary_slot] (instead
+     * of the buggy players[my_player_id] which used net pid as index). */
     {
-        int my_primary_slot = -1;
-        int my_p2_slot = -1;
         int qp;
+        s_my_primary_slot = -1;
+        s_my_p2_slot = -1;
         for (qp = 0; qp < game.players && qp < 4; qp++) {
             if (s_net_player_id[qp] == g_mnet.my_player_id)
-                my_primary_slot = qp;
+                s_my_primary_slot = qp;
             else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
                      s_net_player_id[qp] == g_mnet.my_player_id_2)
-                my_p2_slot = qp;
+                s_my_p2_slot = qp;
         }
-        /* Fallback: if for whatever reason we never found ourselves in the
-         * roster (shouldn't happen but be safe), default to slot 0 so the
-         * player at least has SOMETHING to drive. */
-        if (my_primary_slot < 0) my_primary_slot = 0;
+        if (s_my_primary_slot < 0) s_my_primary_slot = 0;
 
-        /* Now also fix s_is_local to actually reflect "is this slot mine"
-         * since downstream code (my_gamepad's gamepad-redirect, the
-         * remote-state hard-snap, the lap-complete sender) relies on it. */
+        /* Rewrite s_is_local from actual mapping — neutralizes buggy
+         * earlier backstop (s_is_local[g_mnet.my_player_id] = true uses
+         * net pid as array index). */
         for (qp = 0; qp < game.players && qp < 4; qp++) {
-            s_is_local[qp] = (qp == my_primary_slot) || (qp == my_p2_slot);
+            s_is_local[qp] = (qp == s_my_primary_slot) || (qp == s_my_p2_slot);
         }
 
         /* Pin gamepads: P1 port for our primary, P2 port for our local-coop
          * slot, harmless empty port for everyone else. */
         for (qp = 0; qp < game.players && qp < 4; qp++) {
-            if (qp == my_primary_slot)        players[qp].gamepad = 0;
-            else if (qp == my_p2_slot)        players[qp].gamepad = 15;
+            if (qp == s_my_primary_slot)      players[qp].gamepad = 0;
+            else if (qp == s_my_p2_slot)      players[qp].gamepad = 15;
             else                              players[qp].gamepad = 7;
         }
-        target_player = (Uint8)my_primary_slot;
+        target_player = (Uint8)s_my_primary_slot;
     }
 
     for (p = 0; p < game.players && p < 4; p++) {
@@ -1432,6 +1433,14 @@ void player_collision_handling(int p)
 								players[p].best_time = players[p].current_time;	
 								}
 							players[p].laps ++;
+							/* Online: tell server we crossed the finish line. Server
+							 * validates monotonic progression and triggers RACE_FINISH
+							 * once our lap == lap_count. Belt-and-suspenders alongside
+							 * server's implicit-lap detection from PLAYER_STATE.lap. */
+							if (g_online_mode && p == s_my_primary_slot) {
+								mnet_send_lap_complete(players[p].laps,
+								                       (uint16_t)players[p].current_time);
+							}
 							
 							if(game.mode == GAMEMODE_TIMEATTACK)
 							{
@@ -5445,26 +5454,33 @@ void		cpu_control(void)
 		uint8_t my_id  = g_mnet.my_player_id;
 		uint8_t my_id2 = g_mnet.my_player_id_2;
 
-		if (my_id < MNET_MAX_PLAYERS && (int)my_id < game.players) {
+		(void)my_id; (void)my_id2;  /* legacy locals; mapping below is correct */
+		/* Use local slot indices we computed in mmm_online_start_race.
+		 * Reading players[my_id] directly was using server net pid as
+		 * array index — wrong slot whenever pid != local index. Result:
+		 * remote Saturns saw us 'frozen at start' because we were
+		 * broadcasting a different slot's stale data as our own state. */
+		if (s_my_primary_slot >= 0 && s_my_primary_slot < game.players) {
+			int ls = s_my_primary_slot;
 			mnet_send_player_state(
-				players[my_id].x, players[my_id].y, players[my_id].z,
-				players[my_id].ry,
-				(int16_t)(players[my_id].physics_speed * 256.0f),
-				players[my_id].laps,
-				players[my_id].current_checkpoint,
-				players[my_id].current_waypoint,
-				players[my_id].dist_to_next_waypoint);
+				players[ls].x, players[ls].y, players[ls].z,
+				players[ls].ry,
+				(int16_t)(players[ls].physics_speed * 256.0f),
+				players[ls].laps,
+				players[ls].current_checkpoint,
+				players[ls].current_waypoint,
+				players[ls].dist_to_next_waypoint);
 		}
-		if (my_id2 != MNET_INVALID_PLAYER_ID && my_id2 < MNET_MAX_PLAYERS &&
-		    (int)my_id2 < game.players) {
+		if (s_my_p2_slot >= 0 && s_my_p2_slot < game.players) {
+			int ls = s_my_p2_slot;
 			mnet_send_player_state_p2(
-				players[my_id2].x, players[my_id2].y, players[my_id2].z,
-				players[my_id2].ry,
-				(int16_t)(players[my_id2].physics_speed * 256.0f),
-				players[my_id2].laps,
-				players[my_id2].current_checkpoint,
-				players[my_id2].current_waypoint,
-				players[my_id2].dist_to_next_waypoint);
+				players[ls].x, players[ls].y, players[ls].z,
+				players[ls].ry,
+				(int16_t)(players[ls].physics_speed * 256.0f),
+				players[ls].laps,
+				players[ls].current_checkpoint,
+				players[ls].current_waypoint,
+				players[ls].dist_to_next_waypoint);
 		}
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
