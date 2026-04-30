@@ -313,15 +313,15 @@ void mmm_online_start_race(void)
      * Camera/HUD also default to target_player=0 which would be the
      * remote player. Both fixed here: walk our local mapping and pin
      * P1=gamepad 0, P2=gamepad 15, others to harmless slot 7. */
-    /* Match local slot purely by net pid (no new file-scope statics:
-     * adding those has twice broken title-screen rendering on real
-     * hardware, possibly via memory-layout shift). Compute inline,
-     * write into existing s_is_local[] which downstream code already
-     * trusts as the source of "is this my slot". */
+    /* Match local slot purely by net pid — don't gate on s_is_local because
+     * the backstop earlier in this function uses my_player_id as an array
+     * index (wrong: it's a net pid 1..255 not a 0..3 slot), so s_is_local
+     * is sometimes set on the wrong slot. Net pid → slot lookup is correct
+     * because s_net_player_id was populated directly from lobby_players[]. */
     {
-        int qp;
         int my_primary_slot = -1;
         int my_p2_slot = -1;
+        int qp;
         for (qp = 0; qp < game.players && qp < 4; qp++) {
             if (s_net_player_id[qp] == g_mnet.my_player_id)
                 my_primary_slot = qp;
@@ -329,10 +329,14 @@ void mmm_online_start_race(void)
                      s_net_player_id[qp] == g_mnet.my_player_id_2)
                 my_p2_slot = qp;
         }
+        /* Fallback: if for whatever reason we never found ourselves in the
+         * roster (shouldn't happen but be safe), default to slot 0 so the
+         * player at least has SOMETHING to drive. */
         if (my_primary_slot < 0) my_primary_slot = 0;
 
-        /* Rewrite s_is_local from actual mapping — neutralizes the
-         * pre-existing buggy backstop above (it uses net pid as index). */
+        /* Now also fix s_is_local to actually reflect "is this slot mine"
+         * since downstream code (my_gamepad's gamepad-redirect, the
+         * remote-state hard-snap, the lap-complete sender) relies on it. */
         for (qp = 0; qp < game.players && qp < 4; qp++) {
             s_is_local[qp] = (qp == my_primary_slot) || (qp == my_p2_slot);
         }
@@ -1428,16 +1432,6 @@ void player_collision_handling(int p)
 								players[p].best_time = players[p].current_time;	
 								}
 							players[p].laps ++;
-							/* Online: tell server we crossed the finish line.
-							 * Only send for our PRIMARY local slot (we own
-							 * its pid). s_is_local[p] is rewritten in
-							 * mmm_online_start_race so checking that + matching
-							 * the net pid identifies our own primary. */
-							if (g_online_mode && s_is_local[p] &&
-							    s_net_player_id[p] == g_mnet.my_player_id) {
-								mnet_send_lap_complete(players[p].laps,
-								                       (uint16_t)players[p].current_time);
-							}
 							
 							if(game.mode == GAMEMODE_TIMEATTACK)
 							{
@@ -5451,45 +5445,26 @@ void		cpu_control(void)
 		uint8_t my_id  = g_mnet.my_player_id;
 		uint8_t my_id2 = g_mnet.my_player_id_2;
 
-		(void)my_id; (void)my_id2;  /* legacy locals; we resolve via slot lookup */
-		/* Find OUR local primary + P2 slots by scanning s_net_player_id[]
-		 * (no file-scope cache: that has twice broken title rendering).
-		 * Reading players[my_id] directly was using server net pid as
-		 * array index — wrong slot whenever pid != local index, which
-		 * is the typical 2H case. */
-		{
-			int primary_ls = -1, p2_ls = -1;
-			int sp;
-			for (sp = 0; sp < game.players && sp < MNET_MAX_PLAYERS; sp++) {
-				if (!s_is_local[sp]) continue;
-				if (s_net_player_id[sp] == g_mnet.my_player_id)
-					primary_ls = sp;
-				else if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
-				         s_net_player_id[sp] == g_mnet.my_player_id_2)
-					p2_ls = sp;
-			}
-			if (primary_ls >= 0) {
-				int ls = primary_ls;
-				mnet_send_player_state(
-					players[ls].x, players[ls].y, players[ls].z,
-					players[ls].ry,
-					(int16_t)(players[ls].physics_speed * 256.0f),
-					players[ls].laps,
-					players[ls].current_checkpoint,
-					players[ls].current_waypoint,
-					players[ls].dist_to_next_waypoint);
-			}
-			if (p2_ls >= 0) {
-				int ls = p2_ls;
-				mnet_send_player_state_p2(
-					players[ls].x, players[ls].y, players[ls].z,
-					players[ls].ry,
-					(int16_t)(players[ls].physics_speed * 256.0f),
-					players[ls].laps,
-					players[ls].current_checkpoint,
-					players[ls].current_waypoint,
-					players[ls].dist_to_next_waypoint);
-			}
+		if (my_id < MNET_MAX_PLAYERS && (int)my_id < game.players) {
+			mnet_send_player_state(
+				players[my_id].x, players[my_id].y, players[my_id].z,
+				players[my_id].ry,
+				(int16_t)(players[my_id].physics_speed * 256.0f),
+				players[my_id].laps,
+				players[my_id].current_checkpoint,
+				players[my_id].current_waypoint,
+				players[my_id].dist_to_next_waypoint);
+		}
+		if (my_id2 != MNET_INVALID_PLAYER_ID && my_id2 < MNET_MAX_PLAYERS &&
+		    (int)my_id2 < game.players) {
+			mnet_send_player_state_p2(
+				players[my_id2].x, players[my_id2].y, players[my_id2].z,
+				players[my_id2].ry,
+				(int16_t)(players[my_id2].physics_speed * 256.0f),
+				players[my_id2].laps,
+				players[my_id2].current_checkpoint,
+				players[my_id2].current_waypoint,
+				players[my_id2].dist_to_next_waypoint);
 		}
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
@@ -5969,13 +5944,7 @@ void			my_gamepad(void)
 	
 	
 	
-		/* START during active gameplay opens the pause menu — but ONLY in
-		 * offline modes. Online races are server-paced; pausing locally
-		 * desyncs from the server tick (and the pause menu's Quit/Restart
-		 * options aren't meaningful when the race is server-authoritative).
-		 * Online disconnect/quit happens via Y in the lobby instead. */
-		if (KEY_DOWN(0,PER_DGT_ST) && game.game_state != GAMESTATE_RACE_START
-		    && !g_online_mode)
+		if (KEY_DOWN(0,PER_DGT_ST) && game.game_state != GAMESTATE_RACE_START)
 	 {
 		 if(game.pressed_start == false)
 			{
@@ -5986,14 +5955,14 @@ void			my_gamepad(void)
 					 CDDAStop();
 					is_cd_playing = false;
 				}
-
+				
 				for(int p = 0; p < game.players; p++)
 				{
-				stop_sounds(p);
+				stop_sounds(p);	
 				}
 				game.game_state = GAMESTATE_PAUSED;
 				game.pause_menu = 0;
-
+				
 			}
 			game.pressed_start = true;
 		}
