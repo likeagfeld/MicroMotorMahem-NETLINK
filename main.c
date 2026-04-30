@@ -5413,41 +5413,21 @@ void		cpu_control(void)
 	 * (passthrough sync — physics still runs, but server keeps it bounded). */
 	if (g_online_mode && game.game_state == GAMESTATE_GAMEPLAY) {
 		int p;
-		uint8_t my_id  = g_mnet.my_player_id;
-		uint8_t my_id2 = g_mnet.my_player_id_2;
+		/* P1 = our local slot (target_player), not server net pid.
+		 * P2 (local-coop) send deferred. */
+		uint8_t my_id = (uint8_t)target_player;
 
-		(void)my_id; (void)my_id2;  /* legacy locals; we use target_player */
-		/* Send our LOCAL slot's state, not players[net_pid]. target_player
-		 * is set to our primary local slot in mmm_online_start_race. P2
-		 * (local-coop) is the OTHER s_is_local[] slot, if any. */
-		{
-			int ls = target_player;
-			if (ls >= 0 && ls < game.players && s_is_local[ls]) {
-				mnet_send_player_state(
-					players[ls].x, players[ls].y, players[ls].z,
-					players[ls].ry,
-					(int16_t)(players[ls].physics_speed * 256.0f),
-					players[ls].laps,
-					players[ls].current_checkpoint,
-					players[ls].current_waypoint,
-					players[ls].dist_to_next_waypoint);
-			}
-			if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID) {
-				for (ls = 0; ls < game.players && ls < MNET_MAX_PLAYERS; ls++) {
-					if (s_is_local[ls] && ls != target_player) {
-						mnet_send_player_state_p2(
-							players[ls].x, players[ls].y, players[ls].z,
-							players[ls].ry,
-							(int16_t)(players[ls].physics_speed * 256.0f),
-							players[ls].laps,
-							players[ls].current_checkpoint,
-							players[ls].current_waypoint,
-							players[ls].dist_to_next_waypoint);
-						break;
-					}
-				}
-			}
+		if (my_id < MNET_MAX_PLAYERS && (int)my_id < game.players) {
+			mnet_send_player_state(
+				players[my_id].x, players[my_id].y, players[my_id].z,
+				players[my_id].ry,
+				(int16_t)(players[my_id].physics_speed * 256.0f),
+				players[my_id].laps,
+				players[my_id].current_checkpoint,
+				players[my_id].current_waypoint,
+				players[my_id].dist_to_next_waypoint);
 		}
+		/* P2 send deferred to a future build. */
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
