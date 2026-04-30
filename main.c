@@ -199,6 +199,7 @@ extern Uint8 cam_mode;
 extern Uint8 saved_cam_mode;
 extern Uint8 current_players;
 extern Uint8 cd_track;
+extern Uint8 target_player;
 /* CDDA state — title screen leaves track 2 playing; we must stop it before
  * doing any jo_fs_read_file or jo_sprite_add_tga_tileset because the CD
  * block can't service ISO reads while the audio decoder owns the head. */
@@ -245,6 +246,23 @@ void mmm_online_start_race(void)
     if (g_mnet.my_player_id < 4) s_is_local[g_mnet.my_player_id] = true;
     if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID && g_mnet.my_player_id_2 < 4)
         s_is_local[g_mnet.my_player_id_2] = true;
+
+    /* Resolve OUR slots by net pid (not slot-as-pid backstop above which
+     * uses pid as array index — wrong for pid != slot). Single-pass loop
+     * fixes is_local + gamepad + target_player together to keep code size
+     * small (binary growth here can break title rendering on hardware). */
+    {
+        int qp, primary = 0;
+        for (qp = 0; qp < 4; qp++) {
+            bool me1 = (s_net_player_id[qp] == g_mnet.my_player_id);
+            bool me2 = (s_net_player_id[qp] == g_mnet.my_player_id_2 &&
+                        g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID);
+            s_is_local[qp] = me1 || me2;
+            players[qp].gamepad = me1 ? 0 : (me2 ? 15 : 7);
+            if (me1) primary = qp;
+        }
+        target_player = (Uint8)primary;
+    }
 
     /* Deterministic RNG seed from server. */
     srand(g_mnet.game_seed);
