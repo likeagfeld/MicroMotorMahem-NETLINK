@@ -122,12 +122,8 @@ int mmm_get_p2_port(void)
 {
     /* Without multitap: Port B = jo_inputs[6]. With multitap on Port A: slot 1.
      * Disasteroids' getP2Port() pattern. */
-    /* MMM uses gamepad slot 15 for Port B in 2-player VS — see
-     * create_player at main.c:2180-2186 (pad_number += 15 when game.players<=2).
-     * Check that first; fall back to multitap and the typical Port B index. */
-    if (jo_is_input_available(15)) return 15;
     if (jo_is_input_available(1)) return 1;   /* multitap slot */
-    if (jo_is_input_available(6)) return 6;   /* alt Port B */
+    if (jo_is_input_available(6)) return 6;   /* Port B direct */
     return -1;
 }
 
@@ -1389,16 +1385,6 @@ void player_collision_handling(int p)
 								players[p].best_time = players[p].current_time;	
 								}
 							players[p].laps ++;
-							/* Online: tell server we completed a lap. Server validates
-							 * monotonic progression and triggers RACE_FINISH when our
-							 * lap >= lap_count. Without this, server's p.lap stays at 0
-							 * and the race never ends. Only sent for our own primary
-							 * player (server attributes by connection auth pid). */
-							if (g_online_mode && s_is_local[p] &&
-							    s_net_player_id[p] == g_mnet.my_player_id) {
-								mnet_send_lap_complete(players[p].laps,
-								                       (uint16_t)players[p].current_time);
-							}
 							
 							if(game.mode == GAMEMODE_TIMEATTACK)
 							{
@@ -5103,23 +5089,8 @@ if (game.pause_menu == 3)
 				case 5: pcm_play(pup_sound, PCM_SEMI, 6);
 						break;
 						
-				case 6:
-						/* Online quit: skip transition_to_level_select (the
-						 * offline post-race destination) and go straight back
-						 * to the lobby — stay connected, ready up for next race.
-						 * Mirrors clear_level's local cleanup but stops short
-						 * of the level-select transition. */
-						if (g_online_mode) {
-							int qp;
-							jo_sprite_free_from(game.map_sprite_id);
-							for (qp = 0; qp < game.players; qp++) stop_sounds(qp);
-							is_cd_playing = false;
-							ztClearText();
-							game.game_state = GAMESTATE_LOBBY;
-						} else {
-							game.game_state = GAMESTATE_UNINITIALIZED;
-							clear_level();
-						}
+				case 6: game.game_state = GAMESTATE_UNINITIALIZED;
+						clear_level();
 						break;
 										
 				
@@ -5451,14 +5422,12 @@ void		cpu_control(void)
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
-			/* Server is authoritative for ALL non-local players including bots.
-			 * Local-AI override was wrong: each Saturn would diverge, weapons
-			 * wouldn't hit because server didn't know where the local-AI bot
-			 * actually was, and race state would be inconsistent. */
 			{
 				/* Map local slot p -> server-assigned net_player_id.
 				 * remote_states is keyed by net pid (set by server when it
-				 * broadcasts PLAYER_SYNC), not by slot. */
+				 * broadcasts PLAYER_SYNC), not by slot. With 1H+1B, server
+				 * gives bot pid=2 but bot lives in players[1] locally —
+				 * looking up by slot=1 yields empty state and bot is invisible. */
 				uint8_t net_id = s_net_player_id[p];
 				const mnet_remote_state_t* rs;
 				if (net_id == MNET_INVALID_PLAYER_ID) continue;
@@ -5502,7 +5471,7 @@ void			my_gamepad(void)
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
 			{
-				/* Server-authoritative input for all non-local players (bots too). */
+				/* Same pid mapping rule as PLAYER_SYNC consumer above. */
 				uint8_t net_id = s_net_player_id[p];
 				int bits;
 				if (net_id == MNET_INVALID_PLAYER_ID) continue;
