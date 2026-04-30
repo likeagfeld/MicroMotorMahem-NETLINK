@@ -5960,7 +5960,13 @@ void			my_gamepad(void)
 	
 	
 	
-		if (KEY_DOWN(0,PER_DGT_ST) && game.game_state != GAMESTATE_RACE_START)
+		/* START during active gameplay opens the pause menu — but ONLY in
+		 * offline modes. Online races are server-paced; pausing locally
+		 * desyncs from the server tick (and the pause menu's Quit/Restart
+		 * options aren't meaningful when the race is server-authoritative).
+		 * Online disconnect/quit happens via Y in the lobby instead. */
+		if (KEY_DOWN(0,PER_DGT_ST) && game.game_state != GAMESTATE_RACE_START
+		    && !g_online_mode)
 	 {
 		 if(game.pressed_start == false)
 			{
@@ -5971,14 +5977,14 @@ void			my_gamepad(void)
 					 CDDAStop();
 					is_cd_playing = false;
 				}
-				
+
 				for(int p = 0; p < game.players; p++)
 				{
-				stop_sounds(p);	
+				stop_sounds(p);
 				}
 				game.game_state = GAMESTATE_PAUSED;
 				game.pause_menu = 0;
-				
+
 			}
 			game.pressed_start = true;
 		}
