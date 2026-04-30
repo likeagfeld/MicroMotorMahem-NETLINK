@@ -906,6 +906,16 @@ class GameSimulation:
         p.current_waypoint = cur_wp
         p.dist_to_next_waypoint = dist_wp
         p.last_state_recv_time = time.time()
+        # Implicit lap progression: if client's lap is exactly p.lap+1, accept
+        # it. Covers local-coop P2 (whose LAP_COMPLETE has no pid byte and
+        # would be misattributed to P1) and any case where LAP_COMPLETE is
+        # dropped over the modem. Treats gap > 1 or backward lap as suspect.
+        if not p.dnf and not p.finished and lap == p.lap + 1:
+            p.lap = lap
+            p.current_checkpoint = 0
+            if p.lap >= self.lap_count:
+                p.finished = True
+                p.finish_time = time.time()
 
     def handle_lap_complete(self, pid: int, lap: int, lap_time: int) -> tuple:
         """Validate a LAP_COMPLETE advisory.

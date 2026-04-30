@@ -1389,6 +1389,16 @@ void player_collision_handling(int p)
 								players[p].best_time = players[p].current_time;	
 								}
 							players[p].laps ++;
+							/* Online: tell server we completed a lap. Server validates
+							 * monotonic progression and triggers RACE_FINISH when our
+							 * lap >= lap_count. Without this, server's p.lap stays at 0
+							 * and the race never ends. Only sent for our own primary
+							 * player (server attributes by connection auth pid). */
+							if (g_online_mode && s_is_local[p] &&
+							    s_net_player_id[p] == g_mnet.my_player_id) {
+								mnet_send_lap_complete(players[p].laps,
+								                       (uint16_t)players[p].current_time);
+							}
 							
 							if(game.mode == GAMEMODE_TIMEATTACK)
 							{
@@ -5093,8 +5103,23 @@ if (game.pause_menu == 3)
 				case 5: pcm_play(pup_sound, PCM_SEMI, 6);
 						break;
 						
-				case 6: game.game_state = GAMESTATE_UNINITIALIZED;
-						clear_level();
+				case 6:
+						/* Online quit: skip transition_to_level_select (the
+						 * offline post-race destination) and go straight back
+						 * to the lobby — stay connected, ready up for next race.
+						 * Mirrors clear_level's local cleanup but stops short
+						 * of the level-select transition. */
+						if (g_online_mode) {
+							int qp;
+							jo_sprite_free_from(game.map_sprite_id);
+							for (qp = 0; qp < game.players; qp++) stop_sounds(qp);
+							is_cd_playing = false;
+							ztClearText();
+							game.game_state = GAMESTATE_LOBBY;
+						} else {
+							game.game_state = GAMESTATE_UNINITIALIZED;
+							clear_level();
+						}
 						break;
 										
 				
@@ -5268,15 +5293,7 @@ void		cpu_control(void)
 {
 	if (game.game_state != GAMESTATE_GAMEPLAY )
        return;
-    /* Allow online netlink races to drive bots with the same waypoint AI
-     * the offline 1P race uses. The Python server's bot AI ships with a
-     * procedural 12-point oval for waypoints (real per-track waypoints
-     * are in track .bin files on the disc, not on the server). Running
-     * cpu_control locally on each Saturn with the actual loaded waypoints
-     * gives bots that follow the real track instead of drifting randomly.
-     * Trade-off: bot positions can diverge slightly between Saturns. */
-    if(game.mode != GAMEMODE_1PLAYERRACE && game.mode != GAMEMODE_1PLAYERSURVIVAL
-       && game.mode != GAMEMODE_NETLINKRACE)
+    if(game.mode != GAMEMODE_1PLAYERRACE && game.mode != GAMEMODE_1PLAYERSURVIVAL)
 	   return;
    
     Sint16 rot_dif = 0;
@@ -5434,10 +5451,10 @@ void		cpu_control(void)
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
-			/* Bots run cpu_control locally with real track waypoints; server's
-			 * procedural-oval AI position is wrong for the actual track.
-			 * Skip the hard-snap so local AI's physics output stays. */
-			if (s_is_bot[p]) continue;
+			/* Server is authoritative for ALL non-local players including bots.
+			 * Local-AI override was wrong: each Saturn would diverge, weapons
+			 * wouldn't hit because server didn't know where the local-AI bot
+			 * actually was, and race state would be inconsistent. */
 			{
 				/* Map local slot p -> server-assigned net_player_id.
 				 * remote_states is keyed by net pid (set by server when it
@@ -5485,13 +5502,9 @@ void			my_gamepad(void)
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
 			{
-				/* Skip bot slots — local cpu_control sets their cpu_* flags
-				 * with real track waypoints, server's INPUT_RELAY uses
-				 * procedural waypoints and would steer wrong. */
-				uint8_t net_id;
+				/* Server-authoritative input for all non-local players (bots too). */
+				uint8_t net_id = s_net_player_id[p];
 				int bits;
-				if (s_is_bot[p]) continue;
-				net_id = s_net_player_id[p];
 				if (net_id == MNET_INVALID_PLAYER_ID) continue;
 				bits = mnet_get_remote_input(net_id);
 				if (bits >= 0) mmm_apply_remote_input(p, (uint8_t)bits);
