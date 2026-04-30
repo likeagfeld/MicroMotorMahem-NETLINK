@@ -122,8 +122,12 @@ int mmm_get_p2_port(void)
 {
     /* Without multitap: Port B = jo_inputs[6]. With multitap on Port A: slot 1.
      * Disasteroids' getP2Port() pattern. */
+    /* MMM uses gamepad slot 15 for Port B in 2-player VS — see
+     * create_player at main.c:2180-2186 (pad_number += 15 when game.players<=2).
+     * Check that first; fall back to multitap and the typical Port B index. */
+    if (jo_is_input_available(15)) return 15;
     if (jo_is_input_available(1)) return 1;   /* multitap slot */
-    if (jo_is_input_available(6)) return 6;   /* Port B direct */
+    if (jo_is_input_available(6)) return 6;   /* alt Port B */
     return -1;
 }
 
@@ -5264,7 +5268,15 @@ void		cpu_control(void)
 {
 	if (game.game_state != GAMESTATE_GAMEPLAY )
        return;
-    if(game.mode != GAMEMODE_1PLAYERRACE && game.mode != GAMEMODE_1PLAYERSURVIVAL)
+    /* Allow online netlink races to drive bots with the same waypoint AI
+     * the offline 1P race uses. The Python server's bot AI ships with a
+     * procedural 12-point oval for waypoints (real per-track waypoints
+     * are in track .bin files on the disc, not on the server). Running
+     * cpu_control locally on each Saturn with the actual loaded waypoints
+     * gives bots that follow the real track instead of drifting randomly.
+     * Trade-off: bot positions can diverge slightly between Saturns. */
+    if(game.mode != GAMEMODE_1PLAYERRACE && game.mode != GAMEMODE_1PLAYERSURVIVAL
+       && game.mode != GAMEMODE_NETLINKRACE)
 	   return;
    
     Sint16 rot_dif = 0;
@@ -5422,12 +5434,14 @@ void		cpu_control(void)
 
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
+			/* Bots run cpu_control locally with real track waypoints; server's
+			 * procedural-oval AI position is wrong for the actual track.
+			 * Skip the hard-snap so local AI's physics output stays. */
+			if (s_is_bot[p]) continue;
 			{
 				/* Map local slot p -> server-assigned net_player_id.
 				 * remote_states is keyed by net pid (set by server when it
-				 * broadcasts PLAYER_SYNC), not by slot. With 1H+1B, server
-				 * gives bot pid=2 but bot lives in players[1] locally —
-				 * looking up by slot=1 yields empty state and bot is invisible. */
+				 * broadcasts PLAYER_SYNC), not by slot. */
 				uint8_t net_id = s_net_player_id[p];
 				const mnet_remote_state_t* rs;
 				if (net_id == MNET_INVALID_PLAYER_ID) continue;
@@ -5471,9 +5485,13 @@ void			my_gamepad(void)
 		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
 			if (s_is_local[p]) continue;
 			{
-				/* Same pid mapping rule as PLAYER_SYNC consumer above. */
-				uint8_t net_id = s_net_player_id[p];
+				/* Skip bot slots — local cpu_control sets their cpu_* flags
+				 * with real track waypoints, server's INPUT_RELAY uses
+				 * procedural waypoints and would steer wrong. */
+				uint8_t net_id;
 				int bits;
+				if (s_is_bot[p]) continue;
+				net_id = s_net_player_id[p];
 				if (net_id == MNET_INVALID_PLAYER_ID) continue;
 				bits = mnet_get_remote_input(net_id);
 				if (bits >= 0) mmm_apply_remote_input(p, (uint8_t)bits);
