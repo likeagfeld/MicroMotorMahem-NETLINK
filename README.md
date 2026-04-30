@@ -23,7 +23,7 @@ Online multiplayer for **up to 4 players** over the Sega Saturn NetLink modem, s
 - **Local co-op + online**: plug a 2nd controller into the lobby and it registers as P2 on this Saturn — both local players appear on the same shared camera in online mode (split-screen is reserved for offline 2P VS only)
 - **Z-overlay leaderboard** in the lobby — hold Z to see the standings without leaving
 - **Client-to-server diagnostic logging** so the operator can see what your Saturn is doing if something goes wrong
-- **Backup-RAM-safe single-heap build** — `libc_stubs.c` routes `malloc`/`free` through `jo_malloc`/`jo_free`, defending against the heap-corruption class of bug that bit the sibling NetLink ports
+- **Server-authoritative race finish** — first player to reach `MAX_LAPS` triggers `RACE_FINISH`, server grades remaining positions via lap > checkpoint > distance-to-next-waypoint tiebreak (same math as the offline `set_player_position`), broadcasts standings to every client. No ties, no client-side guessing.
 
 ### Flow
 
