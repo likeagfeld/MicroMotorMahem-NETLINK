@@ -8,7 +8,7 @@
 
 ## NetLink Online Play
 
-Online multiplayer for **up to 4 players** over the Sega Saturn NetLink modem, same connectivity method as Flicky's Flock, Utenyaa, Disasteroids and the rest of the NetLink revival lineup. Just update to the latest DreamPi or netlink.py PC tunnel script — the MMM entry is already shipped at dial code **199406** → `saturncoup.duckdns.org:4826`. No manual config required.
+Online multiplayer for **up to 4 players** over the Sega Saturn NetLink modem, same connectivity method as Flicky's Flock, Utenyaa, Disasteroids and the rest of the NetLink revival lineup. Just update to the latest DreamPi or netlink.py PC tunnel script — the MMM entry is already shipped at dial code **199406**. No manual config required.
 
 ### What's in the box
 

@@ -6,7 +6,7 @@ First alpha release of online multiplayer support for MicroMotorMayhem via the S
 
 ## Online setup
 
-No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` alongside the other NetLink revival games (`[server:199406]` → `saturncoup.duckdns.org:4826`). The server is already live and running; just dial in from the Saturn and the bridge takes care of the rest.
+No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` alongside the other NetLink revival games (`[server:199406]`). The server is already live and running; just dial in from the Saturn and the bridge takes care of the rest.
 
 ## How to play
 

@@ -6,7 +6,7 @@ Sixth alpha. The big one — the alpha-0.5 "race never ends" mystery is finally 
 
 ## Online setup
 
-No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]` → `saturncoup.duckdns.org:4826`). The server is already live; just dial in from the Saturn.
+No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]`). The server is already live; just dial in from the Saturn.
 
 ## How to play
 

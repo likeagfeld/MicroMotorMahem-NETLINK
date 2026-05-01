@@ -6,7 +6,7 @@ Third alpha. The "human-vs-human actually works" pass: producer-side pid mapping
 
 ## Online setup
 
-No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]` → `saturncoup.duckdns.org:4826`). The server is already live; just dial in from the Saturn.
+No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]`). The server is already live; just dial in from the Saturn.
 
 ## How to play
 
@@ -29,7 +29,7 @@ Load `game.cue` (not `game.iso` directly) on your emulator or ODE. From the titl
 
 ## Known limitations carried into alpha 0.4
 
-- **Bot AI uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet. Bots are visible, hittable, and consistent across consoles, but they steer in a generic oval pattern rather than following the actual track. The admin endpoint `POST /api/upload_waypoints?track_id=N` is stubbed for the 0.4 fix.
+- **Bot AI uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet. Bots are visible, hittable, and consistent across consoles, but they steer in a generic oval pattern rather than following the actual track.4 fix.
 - **HUD top-center distortion in some online matches** — sprite-slot misalignment that shows up only in some online sessions. Under investigation.
 - **Split-screen P2 view missing 3D + background** during local-coop online — under investigation.
 - 5-player+ matches not exercised yet (cap is `MNET_MAX_PLAYERS = 4`).

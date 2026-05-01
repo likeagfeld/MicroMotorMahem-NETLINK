@@ -6,7 +6,7 @@ Second alpha. The 0.1 hardening pass: the online flow now actually completes a r
 
 ## Online setup
 
-No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` alongside the other NetLink revival games (`[server:199406]` → `saturncoup.duckdns.org:4826`). The server is already live; just dial in from the Saturn.
+No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` alongside the other NetLink revival games (`[server:199406]`). The server is already live; just dial in from the Saturn.
 
 ## How to play
 
@@ -44,7 +44,7 @@ Load `game.cue` (not `game.iso` directly) on your emulator or ODE. From the titl
 
 ## Known limitations & alpha 0.3 roadmap
 
-- **Bot AI uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet. Bots are visible, hittable, and consistent across consoles, but they steer in a generic oval pattern rather than following the actual track. The admin endpoint `POST /api/upload_waypoints?track_id=N` is stubbed for the 0.3 fix.
+- **Bot AI uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet. Bots are visible, hittable, and consistent across consoles, but they steer in a generic oval pattern rather than following the actual track.3 fix.
 - **HUD top-center distortion in some online matches** — sprite-slot misalignment that shows up only in some online sessions. Under investigation; possibly related to map_sprite_id reuse across track loads.
 - **Split-screen P2 view missing 3D + background** during local-coop online — under investigation. The first viewport renders fine.
 - **Local-coop P2 lap completion** is misattributed to P1 if `LAP_COMPLETE` packet (which has no pid byte) is the source. Server's implicit `PLAYER_STATE.lap` validation handles this for now, so race-finish is correct.

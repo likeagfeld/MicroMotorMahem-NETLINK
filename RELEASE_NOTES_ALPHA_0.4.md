@@ -6,7 +6,7 @@ Fourth alpha. Controls now work for everyone (the 0.3 layered fix had its gamepa
 
 ## Online setup
 
-No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]` → `saturncoup.duckdns.org:4826`). The server is already live; just dial in from the Saturn.
+No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]`). The server is already live; just dial in from the Saturn.
 
 ## How to play
 
@@ -33,7 +33,7 @@ Load `game.cue` (not `game.iso` directly) on your emulator or ODE. From the titl
 
 - **P2 PLAYER_STATE broadcast not yet sent.** Local rendering of P2 on YOUR Saturn works (your second controller drives the second car on this Saturn), but the server doesn't receive PLAYER_STATE_P2 packets from us, so other Saturns can't see your P2 driving and the server tracks P2 only via implicit-lap-from-PLAYER_STATE which doesn't fire because we never send P2 state. Fix path: factor the 16-line P2 producer block into `mmm_net.c` so `main.o` doesn't grow past the title-render byte threshold.
 - **HUD top-center sprite distortion in some online races** — same brittle `HUD_TILESET=144` hardcode pattern as the title's old `MAP_TILESET=175`. Fix path: replace `HUD_TILESET+N` references in `draw_hud()` with `game.hud_sprite_id+N` (the actual return value from the HUD.TGA load), so it's robust to sprite-allocation drift.
-- **Bot AI still uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet. Bots are visible, hittable, consistent across consoles — but they steer in a generic oval pattern. The admin endpoint `POST /api/upload_waypoints?track_id=N` is stubbed for the next pass.
+- **Bot AI still uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet. Bots are visible, hittable, consistent across consoles — but they steer in a generic oval pattern.
 - **Split-screen P2 view missing 3D + background** during local-coop online — under investigation.
 - **Race timer auto-advances** the leaderboard back to the lobby after ~4 seconds (RACE_END_TIMER=120 frames at 30 fps); not driven by button press. If you'd prefer "press any button to continue", that's a one-line change.
 - 5-player+ matches not exercised yet (cap is `MNET_MAX_PLAYERS = 4`).

@@ -6,7 +6,7 @@ Fifth alpha. Five real fixes shipped: the alpha-0.4 "no buttons" regression, the
 
 ## Online setup
 
-No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]` → `saturncoup.duckdns.org:4826`). The server is already live; just dial in from the Saturn.
+No manual config editing needed. Update to the **latest DreamPi** or **latest netlink.py PC tunnel script** — the MicroMotorMayhem entry is already shipped in the default `netlink_config.ini` (`[server:199406]`). The server is already live; just dial in from the Saturn.
 
 ## How to play
 
@@ -35,7 +35,7 @@ Load `game.cue` (not `game.iso` directly) on your emulator or ODE. From the titl
 ## Known limitations carried into alpha 0.6
 
 - **Car selection lost in lobby→race transition** — `process_game_start` wipes `lobby_players[]` so `mmm_online_start_race` reads `car_id=0` for every slot. All cars default to car 0 in the race. Fix path: capture car selections into the surviving `game_roster[]` (currently only stores id+name).
-- **Bot AI still uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet. The admin endpoint `POST /api/upload_waypoints?track_id=N` is stubbed for the next pass.
+- **Bot AI still uses procedural waypoints, not the actual track geometry.** Real per-track waypoints live in the `.bin` files on disc and aren't uploaded to the server yet.
 - 5-player+ matches not exercised yet (cap is `MNET_MAX_PLAYERS = 4`).
 
 ## Disclaimer
