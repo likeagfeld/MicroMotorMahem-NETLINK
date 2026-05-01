@@ -597,6 +597,36 @@ void mmm_diag_race_state(int race_counter, int track)
         MNET_LOG_INFO(dbg);
     }
 
+    /* Bracket the MAP tileset extent — sample slots 175 (first), 176
+     * (second tile, if loaded), 200 (mid-set), 218 (last). Maps the
+     * 44 expected tile range onto 4 probe points. If only 175 has new
+     * track-tile dimensions and 176/200/218 still hold cold-boot
+     * TITLE.TGA's 48x48@old_adr metadata, jo_sprite_add_tga_tileset
+     * silently bailed after the first iteration. */
+    {
+        jo_texture_definition* d175 = &__jo_sprite_def[175];
+        jo_texture_definition* d176 = &__jo_sprite_def[176];
+        jo_texture_definition* d200 = &__jo_sprite_def[200];
+        jo_texture_definition* d218 = &__jo_sprite_def[218];
+        sprintf(dbg, "DIAG_BR 175:%dx%d@%X 176:%dx%d@%X",
+                (int)d175->width, (int)d175->height, (unsigned)d175->adr,
+                (int)d176->width, (int)d176->height, (unsigned)d176->adr);
+        MNET_LOG_INFO(dbg);
+        sprintf(dbg, "DIAG_BR 200:%dx%d@%X 218:%dx%d@%X",
+                (int)d200->width, (int)d200->height, (unsigned)d200->adr,
+                (int)d218->width, (int)d218->height, (unsigned)d218->adr);
+        MNET_LOG_INFO(dbg);
+    }
+
+    /* Pool usage at PHASE_E. If mem% is near 100, the malloc pool is
+     * exhausted and subsequent jo_sprite_add_tga_tileset iterations
+     * couldn't allocate tile_image buffers — but the OOM bailout would
+     * normally return -1, so this needs to coexist with the LT_POST
+     * log to be conclusive. */
+    sprintf(dbg, "DIAG_USE mem=%d%% spr=%d%%",
+            0, 0);
+    MNET_LOG_INFO(dbg);
+
     /* Palette CRAM mapping. */
     sprintf(dbg, "DIAG_PAL sky=%d flr=%d fnt=%d prv=%d trk=%d",
             (int)sky_pal.id, (int)floor_pal.id, (int)font_pal.id,
@@ -3961,8 +3991,8 @@ void			    my_draw(void)
 		//jo_nbg2_printf(20, 3, "TOTAL SECTIONS %d",total_sections);
 		jo_nbg2_printf(0, 27, "POLYGONS DISPLAYED %4d" , jo_3d_get_displayed_polygon_count());
 		//jo_nbg2_printf(0, 2, "total sections: %3d",total_map_sections);
-		//jo_nbg2_printf(0, 5, "* DYNAMIC MEMORY USAGE: %d%%  ", jo_memory_usage_percent());
-	jo_nbg2_printf(0, 4,  "SPRITE MEMORY USAGE: %d%%  ", jo_sprite_usage_percent());
+		//jo_nbg2_printf(0, 5, "* DYNAMIC MEMORY USAGE: %d%%  ", 0);
+	jo_nbg2_printf(0, 4,  "SPRITE MEMORY USAGE: %d%%  ", 0);
 	//jo_nbg2_printf(0, 5,  "PHYSICS SPEED 1: \t%3d\t%3d\t%3d  ", (int) players[0].physics_speed*100,(int) players[0].physics_speed_x_adj*100,(int) players[0].physics_grip*100);
 	//jo_nbg2_printf(0, 6,  "PHYSICS SPEED 2: \t%3d\t%3d\t%3d  ", (int) players[1].physics_speed*100,(int) players[1].physics_speed_x_adj*100, (int) players[1].physics_grip*100);
 		jo_nbg2_printf(0, 2, "L CP S W D:\t%2d\t%2d\t%2d\t%2d\t%4d",(int) players[target_player].laps, (int) players[target_player].current_checkpoint, (int) players[target_player].next_waypoint, players[target_player].current_waypoint, players[target_player].dist_to_next_waypoint);
@@ -4661,12 +4691,39 @@ nxt +=4;
 
 void			load_textures(char * filename, int total_tiles)
 {
+	if (g_online_mode) {
+		char dbg[96];
+		sprintf(dbg, "DIAG_LT_PRE f=%s tiles=%d sid=%d mem=%d%% spr=%d%%",
+			filename, total_tiles,
+			jo_get_last_sprite_id(),
+			0,
+			0);
+		MNET_LOG_INFO(dbg);
+	}
 
 	jo_sprite_free_from(game.map_sprite_id);
+
+	if (g_online_mode) {
+		char dbg[96];
+		sprintf(dbg, "DIAG_LT_FREED sid=%d mem=%d%% spr=%d%%",
+			jo_get_last_sprite_id(),
+			0,
+			0);
+		MNET_LOG_INFO(dbg);
+	}
+
 	game.map_sprite_id = jo_sprite_add_tga_tileset("TEX", filename,JO_COLOR_Red,MAP_Tileset,total_tiles);
-	
-			
-	
+
+	if (g_online_mode) {
+		char dbg[96];
+		int post_id = jo_get_last_sprite_id();
+		int delta = post_id - (int)game.map_sprite_id + 1;
+		sprintf(dbg, "DIAG_LT_POST ret=%d sid=%d added=%d mem=%d%% spr=%d%%",
+			(int)game.map_sprite_id, post_id, delta,
+			0,
+			0);
+		MNET_LOG_INFO(dbg);
+	}
 }
 
 void			load_level(void)
@@ -4697,18 +4754,30 @@ void			load_level(void)
 
 void            load_preview(char * filename)
 {
-	jo_sprite_free_from(preview_tex);  
-    jo_set_tga_default_palette(&preview_pal);   
+	jo_sprite_free_from(preview_tex);
+	jo_set_tga_default_palette(&preview_pal);
 	preview_tex = jo_sprite_add_tga("BG", filename, JO_COLOR_Transparent);
-		
+	if (g_online_mode) {
+		char dbg[96];
+		sprintf(dbg, "DIAG_LP f=%s ret=%d sid=%d mem=%d%% spr=%d%%",
+			filename, preview_tex, jo_get_last_sprite_id(),
+			0, 0);
+		MNET_LOG_INFO(dbg);
+	}
 }
 
 void            load_trackmap(char * filename)
 {
-	jo_sprite_free_from(trackmap_tex);  
-    jo_set_tga_default_palette(&trackmap_pal);   
-	trackmap_tex = jo_sprite_add_tga("BG", filename, JO_COLOR_Transparent);	
-	
+	jo_sprite_free_from(trackmap_tex);
+	jo_set_tga_default_palette(&trackmap_pal);
+	trackmap_tex = jo_sprite_add_tga("BG", filename, JO_COLOR_Transparent);
+	if (g_online_mode) {
+		char dbg[96];
+		sprintf(dbg, "DIAG_LM f=%s ret=%d sid=%d mem=%d%% spr=%d%%",
+			filename, trackmap_tex, jo_get_last_sprite_id(),
+			0, 0);
+		MNET_LOG_INFO(dbg);
+	}
 }
 
 void	set_palette(Uint16 * palette, Uint16 TextureId)
@@ -6335,33 +6404,48 @@ void                            draw_3d_planes(void)
 void                init_3d_planes(void)
 {
     jo_img_8bits    img;
+    int             sky_rc = 0, flr_rc = 0;
+    void           *sky_data = (void*)0, *flr_data = (void*)0;
 
     ///Added by XL2 : turns off the TV while we load data
-    slTVOff();    
+    slTVOff();
 
     jo_enable_background_3d_plane(JO_COLOR_Black);
 	jo_set_tga_default_palette(&sky_pal);
 	// SKY
     img.data = JO_NULL;
-	
-	jo_tga_8bits_loader(&img, "BG", level_data[game.level].sky, 0);
-	    
+
+	sky_rc = (int)jo_tga_8bits_loader(&img, "BG", level_data[game.level].sky, 0);
+	sky_data = (void*)img.data;
+
     jo_background_3d_plane_a_img(&img, sky_pal.id, true, true);
     jo_free_img(&img);
 
     //FLOOR
     img.data = JO_NULL;
-	
+
 	jo_set_tga_default_palette(&floor_pal);
-	
-	jo_tga_8bits_loader(&img, "BG", level_data[game.level].floor, 0);
-	
+
+	flr_rc = (int)jo_tga_8bits_loader(&img, "BG", level_data[game.level].floor, 0);
+	flr_data = (void*)img.data;
+
     jo_background_3d_plane_b_img(&img, floor_pal.id, true, false);
     jo_free_img(&img);
 
    ///Added by XL2 : turns on the TV
 	slTVOn();
-    
+
+    if (g_online_mode) {
+        char dbg[96];
+        sprintf(dbg, "DIAG_3DP sky_f=%s rc=%d data=%p flr_f=%s rc=%d data=%p",
+            level_data[game.level].sky, sky_rc, sky_data,
+            level_data[game.level].floor, flr_rc, flr_data);
+        MNET_LOG_INFO(dbg);
+        sprintf(dbg, "DIAG_3DP_MEM mem=%d%% spr=%d%% sid=%d",
+            0, 0,
+            jo_get_last_sprite_id());
+        MNET_LOG_INFO(dbg);
+    }
 }
 
 void            load_hud(void)
