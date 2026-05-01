@@ -524,20 +524,122 @@ Uint8				music_vol = 6;
 Sint16 				floor_x = 0;
 Sint16 				floor_z = 0;
 
-/* DIAG_RACE/DIAG_XP helper — defined here (after the static xpdata_ and
- * file-scope total_*) so it can read all of those directly. Called from
- * mmm_online_start_race PHASE C. Forward-declared at the top of the TU. */
+/* mmm_diag_race_state — comprehensive read-only dump of VDP1 sprite
+ * allocator state, sprite definitions for the four key tilesets
+ * (CAR/PLAYER/PUP/MAP/HUD), palette IDs, and raw VRAM bytes at the
+ * sprite addresses. Called from mmm_online_start_race PHASE C right
+ * after init_3d_planes. Designed so a SINGLE race produces enough
+ * data to diagnose any visual corruption without another test cycle.
+ *
+ * What we'll be able to tell from the output:
+ *  - DIAG_RACE: was the BIN parsed correctly (model/section counts)?
+ *  - DIAG_SPR : last sprite id, dynamic vs hardcoded base values match?
+ *  - DIAG_DEF : are HUD/PUP/MAP sprite defs (width/height/adr) sane?
+ *               If width=0 or adr=0 for a known-loaded tileset → VRAM
+ *               allocator pointer is wrong, sprite data isn't where
+ *               the rendering code is reading from. Classic source of
+ *               "wrong colors / mix of static" symptoms.
+ *  - DIAG_HC  : __jo_sprite_def[hardcoded id] vs dynamic id — if
+ *               PUP_TILESET=144 doesn't have width=16, the static
+ *               ATTRIBUTE arrays in objects.h reference the wrong
+ *               sprite (different size/colors → corrupt render).
+ *  - DIAG_PAL : palette IDs assigned to each LUT — wrong CRAM mapping
+ *               also produces "wrong colors" without affecting geometry.
+ *  - DIAG_VR  : first 16 raw bytes at HUD's actual VRAM address (cache-
+ *               through alias 0x25C00000). If they're 00s the sprite
+ *               data didn't get DMA'd in. If they're ASCII or something
+ *               weird → wrong region got copied here.
+ *  - DIAG_XP  : xpdata_[0..2] pointers + first dword behind each.
+ */
 void mmm_diag_race_state(int race_counter, int track)
 {
     char dbg[96];
+    int last_id = jo_get_last_sprite_id();
+
     sprintf(dbg, "DIAG_RACE n=%d t=%d models=%d sect=%d wp=%d",
             race_counter, track,
             (int)model_total, (int)total_sections, (int)total_waypoints);
     MNET_LOG_INFO(dbg);
+
+    sprintf(dbg, "DIAG_SPR last=%d dynMAP=%d dynHUD=%d dynPUP=%d",
+            last_id,
+            (int)game.map_sprite_id,
+            (int)game.hud_sprite_id,
+            (int)game.pup_sprite_id);
+    MNET_LOG_INFO(dbg);
+
+    /* Sprite definitions — width=0 or adr=0 for a populated id ==
+     * the sprite was never written to VRAM. */
+    {
+        jo_texture_definition* h = &__jo_sprite_def[(int)game.hud_sprite_id];
+        jo_texture_definition* pu = &__jo_sprite_def[(int)game.pup_sprite_id];
+        jo_texture_definition* m = &__jo_sprite_def[(int)game.map_sprite_id];
+        sprintf(dbg, "DIAG_DEF H:%dx%d@%X P:%dx%d@%X M:%dx%d@%X",
+                (int)h->width, (int)h->height, (unsigned)h->adr,
+                (int)pu->width, (int)pu->height, (unsigned)pu->adr,
+                (int)m->width, (int)m->height, (unsigned)m->adr);
+        MNET_LOG_INFO(dbg);
+    }
+
+    /* Hardcoded constant sanity check. PLAYER_TILESET=12, PUP_TILESET=144,
+     * MAP_TILESET=175 (objects.h). If those slots' .width is 0 or doesn't
+     * match the expected tile size for that tileset, the static ATTRIBUTE
+     * arrays in objects.h are pointing at the wrong sprite ids and we'll
+     * see "wrong colors / mix of static" in the rendered output. */
+    {
+        jo_texture_definition* pl = &__jo_sprite_def[12];   /* PLAYER_TILESET */
+        jo_texture_definition* pu = &__jo_sprite_def[144];  /* PUP_TILESET   */
+        jo_texture_definition* mp = &__jo_sprite_def[175];  /* MAP_TILESET   */
+        sprintf(dbg, "DIAG_HC PL12:%dx%d@%X PU144:%dx%d@%X MP175:%dx%d@%X",
+                (int)pl->width, (int)pl->height, (unsigned)pl->adr,
+                (int)pu->width, (int)pu->height, (unsigned)pu->adr,
+                (int)mp->width, (int)mp->height, (unsigned)mp->adr);
+        MNET_LOG_INFO(dbg);
+    }
+
+    /* Palette CRAM mapping. */
+    sprintf(dbg, "DIAG_PAL sky=%d flr=%d fnt=%d prv=%d trk=%d",
+            (int)sky_pal.id, (int)floor_pal.id, (int)font_pal.id,
+            (int)preview_pal.id, (int)trackmap_pal.id);
+    MNET_LOG_INFO(dbg);
+
+    /* Sample 16 raw bytes from HUD's VRAM via cache-through alias.
+     * VDP1 sprite VRAM base is 0x05C00000, sprite-relative offsets are
+     * stored in 8-byte units (.adr * 8 = byte offset). Cache-through
+     * alias adds 0x20000000 to bypass D-cache. If the bytes are all 00
+     * the sprite wasn't loaded; ASCII-looking bytes mean wrong region
+     * got DMA'd here; sane palette indices = sprite is actually there. */
+    {
+        Uint16 hud_adr = __jo_sprite_def[(int)game.hud_sprite_id].adr;
+        volatile unsigned char* p =
+            (volatile unsigned char*)(0x25C00000UL + ((unsigned long)hud_adr << 3));
+        sprintf(dbg, "DIAG_VR HUD@%lX b=%02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X",
+                0x05C00000UL + ((unsigned long)hud_adr << 3),
+                p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],
+                p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
+        MNET_LOG_INFO(dbg);
+    }
+
+    /* Same VRAM sample but for MAP/TRACK sprite (the one that actually
+     * shows up as the track polygons). Different from HUD — if HUD looks
+     * correct but MAP looks wrong, the issue is in load_textures path,
+     * not in the boot-time sprite allocation. */
+    {
+        Uint16 map_adr = __jo_sprite_def[(int)game.map_sprite_id].adr;
+        volatile unsigned char* p =
+            (volatile unsigned char*)(0x25C00000UL + ((unsigned long)map_adr << 3));
+        sprintf(dbg, "DIAG_VR MAP@%lX b=%02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X",
+                0x05C00000UL + ((unsigned long)map_adr << 3),
+                p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],
+                p[8], p[9], p[10], p[11]);
+        MNET_LOG_INFO(dbg);
+    }
+
+    /* xpdata pointers + first dword behind each (track geometry sanity). */
     {
         unsigned int p0 = xpdata_[0] ? *((unsigned int*)xpdata_[0]) : 0xDEADBEEF;
         unsigned int p1 = xpdata_[1] ? *((unsigned int*)xpdata_[1]) : 0xDEADBEEF;
-        sprintf(dbg, "DIAG_XP xp0=%p xp1=%p xp2=%p p0_word=%08X p1_word=%08X",
+        sprintf(dbg, "DIAG_XP xp0=%p xp1=%p xp2=%p p0=%08X p1=%08X",
                 (void*)xpdata_[0], (void*)xpdata_[1], (void*)xpdata_[2],
                 p0, p1);
         MNET_LOG_INFO(dbg);
@@ -5581,6 +5683,20 @@ void			my_gamepad(void)
 						(int)players[my_id].x, (int)players[my_id].z,
 						(int)(players[my_id].physics_speed * 100.0f));
 					MNET_LOG_INFO(dbg);
+				}
+				/* Sprite-allocator drift detector: if jo_get_last_sprite_id()
+				 * changes during gameplay, something is allocating new
+				 * sprites mid-race and could overflow VDP1 VRAM. Logs
+				 * only on transition so it's not noisy. */
+				{
+					static int s_diag_last_spr_id = -1;
+					int cur_id = jo_get_last_sprite_id();
+					if (cur_id != s_diag_last_spr_id) {
+						sprintf(dbg, "DIAG_SPR_DRIFT f=%d %d->%d",
+							s_diag_frame_ctr, s_diag_last_spr_id, cur_id);
+						MNET_LOG_INFO(dbg);
+						s_diag_last_spr_id = cur_id;
+					}
 				}
 			}
 		}

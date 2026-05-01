@@ -45,7 +45,7 @@ void mnet_init(void)
      * silently dropping diagnostic frames mid-debug. 32 tokens gives
      * headroom for any rapid-fire burst while the +1/15-frames refill
      * caps the long-run rate at ~4 msg/sec (well within 14400 baud). */
-    g_mnet.client_log_tokens = 32;
+    g_mnet.client_log_tokens = 64;  /* bumped for diagnostic build — race-start burst has ~26 messages */
     g_mnet.client_log_refill = 0;
     g_mnet.client_log_dropped = 0;
 }
@@ -679,7 +679,7 @@ void mnet_tick(void)
     g_mnet.client_log_refill++;
     if (g_mnet.client_log_refill >= 15) {
         g_mnet.client_log_refill = 0;
-        if (g_mnet.client_log_tokens < 32) g_mnet.client_log_tokens++;
+        if (g_mnet.client_log_tokens < 64) g_mnet.client_log_tokens++;
     }
 
     if (g_mnet.state == MNET_STATE_OFFLINE ||
