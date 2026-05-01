@@ -411,8 +411,18 @@ void mmm_online_start_race(void)
      * level transition). xpdata_ gets overwritten with track models; cars
      * are now safely captured in players_car[]. */
     jo_sprite_free_from(game.map_sprite_id);
-    preview_tex = game.map_sprite_id;
-    trackmap_tex = game.map_sprite_id;
+    /* DO NOT reset preview_tex/trackmap_tex to map_sprite_id here.
+     * Confirmed via v0.6.5 logs: setting them to 175 caused the
+     * subsequent load_preview/load_trackmap calls to do
+     * jo_sprite_free_from(175) which WIPES the entire 44-tile track
+     * tileset that load_textures just installed. The offline mid-
+     * tournament path (main.c:6920) inherits preview_tex/trackmap_tex
+     * from the previous race's load_preview/load_trackmap return values
+     * — they're already > current __jo_sprite_id post-free, so the
+     * next jo_sprite_free_from call is a safe no-op (early-exit on
+     * `sprite_id > __jo_sprite_id`). The fix-up happens AFTER
+     * load_textures runs (further down) — we can't do it here because
+     * load_textures rewrites map_sprite_id and __jo_sprite_id. */
     ztClearText();
     jo_disable_background_3d_plane(JO_COLOR_Black);
     jo_clear_background(JO_COLOR_Black);
@@ -424,6 +434,22 @@ void mmm_online_start_race(void)
 
     load_level();
     MNET_LOG_INFO("PHASE_D LEVEL_LOADED");
+
+    /* DATA-DRIVEN FIX (v0.6.5 logs: DIAG_LT_POST sid=218 added=44, then
+     * DIAG_LP/LM both sid=175 — load_preview/load_trackmap each freed
+     * sprites 175..218 because preview_tex/trackmap_tex were wrongly
+     * pointing at 175). Each upstream load_preview/load_trackmap calls
+     * jo_sprite_free_from(preview_tex) BEFORE the new add. To make those
+     * a safe no-op (early-exit on `sprite_id > __jo_sprite_id`), bump
+     * both globals to __jo_sprite_id + 1 / + 2 right before the calls.
+     *   First race after cold boot: bootstraps from BSS-init 0 to 219/220.
+     *   Subsequent races: race N-1 left them at valid values past the
+     *     reused map base anyway (just like upstream offline mid-tournament). */
+    {
+        int next_id = jo_get_last_sprite_id();
+        preview_tex  = next_id + 1;
+        trackmap_tex = next_id + 2;
+    }
 
     load_preview(level_data[game.level].level_preview);
     load_trackmap(level_data[game.level].level_map);
@@ -4691,37 +4717,15 @@ nxt +=4;
 
 void			load_textures(char * filename, int total_tiles)
 {
-	if (g_online_mode) {
-		char dbg[96];
-		sprintf(dbg, "DIAG_LT_PRE f=%s tiles=%d sid=%d mem=%d%% spr=%d%%",
-			filename, total_tiles,
-			jo_get_last_sprite_id(),
-			0,
-			0);
-		MNET_LOG_INFO(dbg);
-	}
-
 	jo_sprite_free_from(game.map_sprite_id);
-
-	if (g_online_mode) {
-		char dbg[96];
-		sprintf(dbg, "DIAG_LT_FREED sid=%d mem=%d%% spr=%d%%",
-			jo_get_last_sprite_id(),
-			0,
-			0);
-		MNET_LOG_INFO(dbg);
-	}
-
 	game.map_sprite_id = jo_sprite_add_tga_tileset("TEX", filename,JO_COLOR_Red,MAP_Tileset,total_tiles);
 
 	if (g_online_mode) {
 		char dbg[96];
 		int post_id = jo_get_last_sprite_id();
 		int delta = post_id - (int)game.map_sprite_id + 1;
-		sprintf(dbg, "DIAG_LT_POST ret=%d sid=%d added=%d mem=%d%% spr=%d%%",
-			(int)game.map_sprite_id, post_id, delta,
-			0,
-			0);
+		sprintf(dbg, "DIAG_LT ret=%d sid=%d added=%d",
+			(int)game.map_sprite_id, post_id, delta);
 		MNET_LOG_INFO(dbg);
 	}
 }
@@ -4759,9 +4763,7 @@ void            load_preview(char * filename)
 	preview_tex = jo_sprite_add_tga("BG", filename, JO_COLOR_Transparent);
 	if (g_online_mode) {
 		char dbg[96];
-		sprintf(dbg, "DIAG_LP f=%s ret=%d sid=%d mem=%d%% spr=%d%%",
-			filename, preview_tex, jo_get_last_sprite_id(),
-			0, 0);
+		sprintf(dbg, "DIAG_LP ret=%d sid=%d", preview_tex, jo_get_last_sprite_id());
 		MNET_LOG_INFO(dbg);
 	}
 }
@@ -4773,9 +4775,7 @@ void            load_trackmap(char * filename)
 	trackmap_tex = jo_sprite_add_tga("BG", filename, JO_COLOR_Transparent);
 	if (g_online_mode) {
 		char dbg[96];
-		sprintf(dbg, "DIAG_LM f=%s ret=%d sid=%d mem=%d%% spr=%d%%",
-			filename, trackmap_tex, jo_get_last_sprite_id(),
-			0, 0);
+		sprintf(dbg, "DIAG_LM ret=%d sid=%d", trackmap_tex, jo_get_last_sprite_id());
 		MNET_LOG_INFO(dbg);
 	}
 }
