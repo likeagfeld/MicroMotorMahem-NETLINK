@@ -126,6 +126,12 @@ XPDATA *xpdata_[32];
 PDATA *pdata_LP_[32];
 CDATA *cdata_[32];
 
+/* Forward decl of file-scope totals so PHASE_E diagnostic can read them.
+ * Definitions remain at the original site below. */
+extern Uint16 model_total;
+extern Uint16 total_sections;
+extern Uint8  total_waypoints;
+
 int mmm_get_p2_port(void)
 {
     /* Returns a Smpc_Peripheral[] index — the same array KEY_PRESS reads
@@ -462,6 +468,38 @@ void mmm_online_start_race(void)
     load_preview(level_data[game.level].level_preview);
     load_trackmap(level_data[game.level].level_map);
     MNET_LOG_INFO("PHASE_D_OK PREVIEW_TRACKMAP");
+
+    /* DIAG_RACE — captures the post-load track state so we can diff
+     * race 1 vs race 2 without another test cycle. If race 2 still
+     * looks broken after 0.6.1's defensive cleanups, this logs:
+     *   - race counter (1, 2, 3, ...) so we know which race in the run
+     *   - track id, totals (models / sections / waypoints) — confirms
+     *     load_level repopulated correctly per-race
+     *   - first 4 xpdata_ pointer values — confirms they actually
+     *     advanced (or didn't) between races
+     *   - first 4 bytes at xpdata_[0] — confirms the data behind the
+     *     pointer is the new track's geometry, not stale CARS.BIN bytes
+     *
+     * Two log lines per race so the client_log token bucket can keep up. */
+    {
+        static int s_race_counter = 0;
+        char dbg[96];
+        s_race_counter++;
+        sprintf(dbg, "DIAG_RACE n=%d t=%d models=%d sect=%d wp=%d",
+                s_race_counter, (int)track,
+                (int)model_total, (int)total_sections, (int)total_waypoints);
+        MNET_LOG_INFO(dbg);
+        {
+            unsigned int p0 = xpdata_[0] ?
+                *((unsigned int*)xpdata_[0]) : 0xDEADBEEF;
+            unsigned int p1 = xpdata_[1] ?
+                *((unsigned int*)xpdata_[1]) : 0xDEADBEEF;
+            sprintf(dbg, "DIAG_XP xp0=%p xp1=%p xp2=%p p0_word=%08X p1_word=%08X",
+                    (void*)xpdata_[0], (void*)xpdata_[1], (void*)xpdata_[2],
+                    p0, p1);
+            MNET_LOG_INFO(dbg);
+        }
+    }
 
     /* Force VDP2 RBG0 background plane reset before re-loading sky/floor.
      * jo_disable_background_3d_plane above only flips the enable bit; it

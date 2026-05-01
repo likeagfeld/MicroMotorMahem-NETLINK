@@ -988,7 +988,16 @@ class GameSimulation:
             if steps > 1:
                 log.info("pid=%d implicit lap jump %d -> %d (modem drop?)",
                          pid, p.lap - steps, p.lap)
-            if p.lap >= self.lap_count:
+            # Match upstream MMM offline: race ends when laps > lap_count
+            # (strict greater), not >=. The spawn position is AT checkpoints[0]
+            # (the start/finish line) so the very first START crossing right
+            # after the race-start countdown counts as p.lap=1 even though
+            # the player hasn't actually completed a lap yet. With `>=`,
+            # 3 crossings (1 spawn + 2 real) would end the race; users
+            # reported "race ends after completing 2 laps". Strict `>`
+            # requires lap_count+1 crossings = lap_count real laps driven,
+            # matching upstream main.c:1450 (`if(players[p].laps > MAX_LAPS)`).
+            if p.lap > self.lap_count:
                 p.finished = True
                 p.finish_time = time.time()
 
@@ -1012,7 +1021,9 @@ class GameSimulation:
         if lap_time > 0 and (p.best_lap_time == 0 or lap_time < p.best_lap_time):
             p.best_lap_time = lap_time
         finished = False
-        if p.lap >= self.lap_count:
+        # See implicit-progression branch above for `>` rationale: race
+        # ends after lap_count+1 crossings (lap_count real laps driven).
+        if p.lap > self.lap_count:
             p.finished = True
             p.finish_time = time.time()
             finished = True
