@@ -118,19 +118,12 @@ net_transport_t g_saturn_transport = {
 void mmm_set_game_state(uint8_t new_state) { game.game_state = new_state; }
 uint8_t mmm_get_game_state(void)           { return game.game_state; }
 
-/* Forward declarations of model-data arrays. Definitions live below
- * (originally `static`, now file-scope so PHASE C in mmm_online_start_race
- * can clear stale entries to prevent garbage rendering when one race's
- * model_total exceeds the next race's). */
-XPDATA *xpdata_[32];
-PDATA *pdata_LP_[32];
-CDATA *cdata_[32];
-
-/* Forward decl of file-scope totals so PHASE_E diagnostic can read them.
- * Definitions remain at the original site below. */
-extern Uint16 model_total;
-extern Uint16 total_sections;
-extern Uint8  total_waypoints;
+/* DIAG_RACE/DIAG_XP helper — defined later (where the static xpdata_,
+ * model_total, total_sections, total_waypoints are visible) and called
+ * from PHASE C. Doing this via a helper instead of forward-declaring
+ * the statics avoids the linkage flip that 0.6.2 attempted (and which
+ * shifted BSS layout enough to break rendering on the FIRST race). */
+void mmm_diag_race_state(int race_counter, int track);
 
 int mmm_get_p2_port(void)
 {
@@ -420,47 +413,14 @@ void mmm_online_start_race(void)
     jo_sprite_free_from(game.map_sprite_id);
     preview_tex = game.map_sprite_id;
     trackmap_tex = game.map_sprite_id;
-    /* Defensive: zero out stale xpdata_/pdata_LP_/cdata_/map_section entries
-     * past the new track's range. Race 1 might have populated indices 0..23,
-     * race 2 might only use 0..7 — without this, map_section[8..23] would
-     * still hold pointers into WORK_RAM_LOW slots now overwritten by race
-     * 2's track BIN, and any stray reference (e.g. a checkpoint pointing
-     * at section index >= new model_total) would draw garbage geometry.
-     * Run BEFORE load_level so it can't clobber the freshly-loaded data. */
-    {
-        int q;
-        for (q = 0; q < 32; q++) {
-            xpdata_[q] = (XPDATA*)0;
-            pdata_LP_[q] = (PDATA*)0;
-            cdata_[q] = (CDATA*)0;
-            map_section[q].map_model = (XPDATA*)0;
-            map_section[q].map_model_lp = (PDATA*)0;
-            map_section[q].a_cdata = (CDATA*)0;
-            map_section[q].a_collison = (COLLISON*)0;
-        }
-    }
     ztClearText();
     jo_disable_background_3d_plane(JO_COLOR_Black);
     jo_clear_background(JO_COLOR_Black);
     MNET_LOG_INFO("PHASE_C BG_CLEARED");
 
-    /* Display init — only on first race or if local-coop state flipped.
-     * Offline mid-tournament reuses the display setup from the start of
-     * the tournament; we should match that. Re-calling slWindow + slPerspective
-     * every race wasn't directly causing corruption but it's a wasted
-     * VDP1 register reset per race. Track via static so we re-init only
-     * when current_players actually changes. */
-    {
-        static Uint8 s_last_current_players = 0;
-        if (s_last_current_players != current_players) {
-            if (g_local_p2_active) init_2p_display();
-            else                   init_1p_display();
-            s_last_current_players = current_players;
-            MNET_LOG_INFO("PHASE_C_OK DISPLAY_INIT");
-        } else {
-            MNET_LOG_INFO("PHASE_C_OK DISPLAY_REUSED");
-        }
-    }
+    if (g_local_p2_active) init_2p_display();
+    else                   init_1p_display();
+    MNET_LOG_INFO("PHASE_C_OK DISPLAY_INIT");
 
     load_level();
     MNET_LOG_INFO("PHASE_D LEVEL_LOADED");
@@ -469,45 +429,15 @@ void mmm_online_start_race(void)
     load_trackmap(level_data[game.level].level_map);
     MNET_LOG_INFO("PHASE_D_OK PREVIEW_TRACKMAP");
 
-    /* DIAG_RACE — captures the post-load track state so we can diff
-     * race 1 vs race 2 without another test cycle. If race 2 still
-     * looks broken after 0.6.1's defensive cleanups, this logs:
-     *   - race counter (1, 2, 3, ...) so we know which race in the run
-     *   - track id, totals (models / sections / waypoints) — confirms
-     *     load_level repopulated correctly per-race
-     *   - first 4 xpdata_ pointer values — confirms they actually
-     *     advanced (or didn't) between races
-     *   - first 4 bytes at xpdata_[0] — confirms the data behind the
-     *     pointer is the new track's geometry, not stale CARS.BIN bytes
-     *
-     * Two log lines per race so the client_log token bucket can keep up. */
+    /* DIAG — captures post-load track state so we can diff race 1 vs
+     * race 2 without another test cycle. Defined as a helper near the
+     * static xpdata_ definitions. */
     {
         static int s_race_counter = 0;
-        char dbg[96];
         s_race_counter++;
-        sprintf(dbg, "DIAG_RACE n=%d t=%d models=%d sect=%d wp=%d",
-                s_race_counter, (int)track,
-                (int)model_total, (int)total_sections, (int)total_waypoints);
-        MNET_LOG_INFO(dbg);
-        {
-            unsigned int p0 = xpdata_[0] ?
-                *((unsigned int*)xpdata_[0]) : 0xDEADBEEF;
-            unsigned int p1 = xpdata_[1] ?
-                *((unsigned int*)xpdata_[1]) : 0xDEADBEEF;
-            sprintf(dbg, "DIAG_XP xp0=%p xp1=%p xp2=%p p0_word=%08X p1_word=%08X",
-                    (void*)xpdata_[0], (void*)xpdata_[1], (void*)xpdata_[2],
-                    p0, p1);
-            MNET_LOG_INFO(dbg);
-        }
+        mmm_diag_race_state(s_race_counter, (int)track);
     }
 
-    /* Force VDP2 RBG0 background plane reset before re-loading sky/floor.
-     * jo_disable_background_3d_plane above only flips the enable bit; it
-     * doesn't clear the underlying VRAM. If the new track's sky/floor
-     * TGA is smaller than the previous one, leftover pixels show through.
-     * Calling jo_disable + jo_enable wraps the load in a clean enable
-     * cycle which empirically clears stale plane data on re-init. */
-    jo_disable_background_3d_plane(JO_COLOR_Black);
     init_3d_planes();
     reset_demo();        /* sets game.game_state = GAMESTATE_RACE_START.
                           * Side effect: also resets target_player=0, which
@@ -518,8 +448,9 @@ void mmm_online_start_race(void)
     cam_mode = saved_cam_mode;
     MNET_LOG_INFO("PHASE_E COMPLETE state->RACE_START");
 }
-/* xpdata_/pdata_LP_/cdata_ definitions are above (file-scope, not static)
- * so mmm_online_start_race can clear stale entries before load_level. */
+static XPDATA *xpdata_[32];
+static PDATA *pdata_LP_[32];
+static CDATA *cdata_[32];
 level_section		map_section[32];
 enemy 				enemies[1];
 powerup				powerups[8];
@@ -591,7 +522,27 @@ Uint8				sfx_volume = 4;
 Uint8				cd_track = 0;
 Uint8				music_vol = 6;
 Sint16 				floor_x = 0;
-Sint16 				floor_z = 0; 
+Sint16 				floor_z = 0;
+
+/* DIAG_RACE/DIAG_XP helper — defined here (after the static xpdata_ and
+ * file-scope total_*) so it can read all of those directly. Called from
+ * mmm_online_start_race PHASE C. Forward-declared at the top of the TU. */
+void mmm_diag_race_state(int race_counter, int track)
+{
+    char dbg[96];
+    sprintf(dbg, "DIAG_RACE n=%d t=%d models=%d sect=%d wp=%d",
+            race_counter, track,
+            (int)model_total, (int)total_sections, (int)total_waypoints);
+    MNET_LOG_INFO(dbg);
+    {
+        unsigned int p0 = xpdata_[0] ? *((unsigned int*)xpdata_[0]) : 0xDEADBEEF;
+        unsigned int p1 = xpdata_[1] ? *((unsigned int*)xpdata_[1]) : 0xDEADBEEF;
+        sprintf(dbg, "DIAG_XP xp0=%p xp1=%p xp2=%p p0_word=%08X p1_word=%08X",
+                (void*)xpdata_[0], (void*)xpdata_[1], (void*)xpdata_[2],
+                p0, p1);
+        MNET_LOG_INFO(dbg);
+    }
+}
 
 //from XL2//
 void ztClearText(void)
@@ -6569,6 +6520,13 @@ if (game.game_state != GAMESTATE_END_LEVEL)
 		game.race_end_timer--;
 		if (game.race_end_timer <= 0 || KEY_DOWN(0, PER_DGT_ST)) {
 			ztClearText();
+			/* Hide the previous race's RBG0 sky/floor when going back
+			 * to lobby — otherwise the lobby's NBG2 text shows over
+			 * leftover 3D background artifacts from the just-finished
+			 * race. mmm_online_start_race re-enables it for the next
+			 * race via init_3d_planes. */
+			jo_disable_background_3d_plane(JO_COLOR_Black);
+			jo_clear_background(JO_COLOR_Black);
 			game.game_state = GAMESTATE_LOBBY;
 		}
 		return;
