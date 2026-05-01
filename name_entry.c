@@ -246,7 +246,7 @@ static void handle_input(void)
     if (KEY_PRESS_PORT(0, PER_DGT_TB)) {
         if (!g_pressed_B) {
             g_online_mode = false;
-            mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+            transition_to_title_screen();
         }
         g_pressed_B = true;
     } else { g_pressed_B = false; }

@@ -79,6 +79,12 @@ int mmm_get_p2_port(void);
 void mmm_online_start_race(void);
 
 /*============================================================================
+ * Lobby/connecting/disconnect -> title transition. Reloads TITLE.BIN +
+ * TITLE.TGA so the title screen renders cleanly instead of carrying over
+ * the last race's track sprites + 3D plane data. Implemented in main.c. */
+void transition_to_title_screen(void);
+
+/*============================================================================
  * Mark a player slot's online attributes. p in [0..3].
  *============================================================================*/
 void mmm_set_player_net_info(int p, bool is_local, uint8_t net_id, bool is_bot);

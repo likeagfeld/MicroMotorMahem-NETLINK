@@ -117,11 +117,15 @@ static void do_input(void)
         g_pressed_start = true;
     } else { g_pressed_start = false; }
 
-    /* B = back to title (stay connected) */
+    /* B = back to title (stay connected). Use transition_to_title_screen()
+     * not bare state-set: the latter leaves the last race's TRACK.TGA in
+     * the sprite atlas and the last race's track BIN in the 3D plane,
+     * producing the leftover-level-on-title bug the user reported. The
+     * transition reloads TITLE.BIN + TITLE.TGA. */
     if (KEY_PRESS_PORT(0, PER_DGT_TB)) {
         if (!g_pressed_B) {
             g_online_mode = false;
-            mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+            transition_to_title_screen();
         }
         g_pressed_B = true;
     } else { g_pressed_B = false; }
@@ -131,7 +135,7 @@ static void do_input(void)
         if (!g_pressed_Y) {
             mnet_send_disconnect();
             g_online_mode = false;
-            mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+            transition_to_title_screen();
         }
         g_pressed_Y = true;
     } else { g_pressed_Y = false; }
@@ -269,7 +273,7 @@ void lobby_screen(void)
     /* Lost connection */
     if (g_mnet.state == MNET_STATE_DISCONNECTED) {
         g_online_mode = false;
-        mmm_set_game_state(GAMESTATE_TITLE_SCREEN);
+        transition_to_title_screen();
         return;
     }
 

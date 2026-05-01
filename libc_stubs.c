@@ -82,8 +82,17 @@ void *_realloc_r(struct _reent *r, void *ptr, size_t size)
     return realloc(ptr, size);
 }
 
-void *_sbrk(int incr)
-{
-    (void)incr;
-    return (void *)-1;
-}
+/* Stub every symbol newlib's lib_a-syscalls.o provides so the archive
+ * member is never pulled in. Avoids both the multi-def link error AND
+ * the ~10 KB of dead syscall code that would otherwise come along. */
+void *_sbrk(int incr)            { (void)incr; return (void *)-1; }
+int   _read(int f, char *p, int n)        { (void)f; (void)p; (void)n; return -1; }
+int   _write(int f, const char *p, int n) { (void)f; (void)p; (void)n; return n; }
+int   _close(int f)              { (void)f; return -1; }
+int   _open(const char *p, int f, int m)  { (void)p; (void)f; (void)m; return -1; }
+int   _fstat(int f, void *st)    { (void)f; (void)st; return 0; }
+int   _isatty(int f)             { (void)f; return 1; }
+int   _lseek(int f, int o, int w){ (void)f; (void)o; (void)w; return 0; }
+int   _kill(int pid, int sig)    { (void)pid; (void)sig; return -1; }
+int   _getpid(void)              { return 1; }
+void  _exit(int c)               { (void)c; for (;;) {} }

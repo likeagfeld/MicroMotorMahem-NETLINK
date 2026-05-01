@@ -49,7 +49,7 @@ HEARTBEAT_TIMEOUT = 60.0
 # many seconds is marked DNF so the race can end. Catches scenarios where
 # a car gets stuck against geometry, a player AFK's, or a connection
 # stays alive (heartbeats fine) but no race progress is being made.
-STALL_TIMEOUT = 90.0
+STALL_TIMEOUT = 180.0  # was 90; bumped so diagnostic test races have time
 # Hard cap on race wall-clock duration. Prevents 1H+1B sessions where
 # the bot's procedural-oval AI never finishes from running forever.
 # Default 10 minutes — generous for 3-lap tracks.
@@ -903,6 +903,12 @@ class GameSimulation:
         p.finished = False
         p.finish_time = 0.0
         p.last_progress_time = time.time()
+        # Diagnostic counters — see handle_player_state. Reset per race
+        # so the FIRST_STATE log fires once at race start, every restart.
+        p._diag_logged_first = False
+        p._diag_count = 0
+        p._diag_last_lap = 0
+        p._diag_last_cp = 0
 
     def handle_player_state(self, pid: int, x: int, y: int, z: int,
                             ry: int, speed: int,
@@ -910,6 +916,37 @@ class GameSimulation:
         p = self.players.get(pid)
         if not p:
             return
+        # Diagnostic: log first PLAYER_STATE per pid in each race, plus
+        # every state where lap or cp differs from previous. Lets us see
+        # exactly what the client is sending so we can stop guessing.
+        if not getattr(p, "_diag_logged_first", False):
+            log.info("DIAG pid=%d FIRST PLAYER_STATE x=%d y=%d z=%d "
+                     "lap=%d cp=%d wp=%d", pid, x, y, z, lap, cp, cur_wp)
+            p._diag_logged_first = True
+            p._diag_last_lap = lap
+            p._diag_last_cp = cp
+            p._diag_count = 1
+        else:
+            p._diag_count = getattr(p, "_diag_count", 0) + 1
+            if lap != getattr(p, "_diag_last_lap", 0):
+                log.info("DIAG pid=%d lap %d->%d after %d states (x=%d z=%d)",
+                         pid, p._diag_last_lap, lap, p._diag_count, x, z)
+                p._diag_last_lap = lap
+            if cp != getattr(p, "_diag_last_cp", 0):
+                log.info("DIAG pid=%d cp %d->%d (x=%d z=%d wp=%d)",
+                         pid, p._diag_last_cp, cp, x, z, cur_wp)
+                p._diag_last_cp = cp
+            # Heartbeat every 60 received states (~8s at 7.5Hz) so we can
+            # confirm flow and watch position/lap drift.
+            if p._diag_count % 60 == 0:
+                log.info("DIAG pid=%d heartbeat n=%d x=%d z=%d lap=%d cp=%d wp=%d",
+                         pid, p._diag_count, x, z, lap, cp, cur_wp)
+        # Capture previous position before overwriting — used for movement-
+        # based stall reset below (driver who's making real progress around
+        # the track but somehow not triggering checkpoint events shouldn't
+        # DNF just because cp/lap fields stay 0).
+        prev_x, prev_z = p.x, p.z
+        prev_wp = p.current_waypoint
         p.x = x
         p.y = y
         p.z = z
@@ -920,20 +957,37 @@ class GameSimulation:
         p.current_waypoint = cur_wp
         p.dist_to_next_waypoint = dist_wp
         p.last_state_recv_time = time.time()
-        # Track forward progress for stall-detection: any checkpoint or lap
-        # advance bumps last_progress_time. tick_stall() marks players who
-        # haven't progressed in STALL_TIMEOUT as DNF so the race can end.
-        if cp > p.current_checkpoint or lap > p.lap:
+        # Track forward progress for stall-detection. Bump last_progress_time
+        # for ANY of:
+        #   1. Checkpoint advance (cp > p.current_checkpoint)
+        #   2. Lap advance (lap > p.lap)
+        #   3. Waypoint advance (cur_wp != prev_wp; waypoints loop so any
+        #      change implies the bot AI / track-following sees motion)
+        #   4. Significant position change (|dx| + |dz| > 50 fixed-point
+        #      units; FARKUS race logs show cp/lap stayed 0 the whole race
+        #      even though the user reported driving — track 4's checkpoint
+        #      triggers may have geometry the client misses)
+        moved = (abs(x - prev_x) + abs(z - prev_z)) > 50
+        if (cp > p.current_checkpoint or lap > p.lap
+                or cur_wp != prev_wp or moved):
             p.last_progress_time = time.time()
-            p.current_checkpoint = cp
-        # Implicit lap progression: if client's lap is exactly p.lap+1, accept
-        # it. Covers local-coop P2 (whose LAP_COMPLETE has no pid byte and
-        # would be misattributed to P1) and any case where LAP_COMPLETE is
-        # dropped over the modem. Treats gap > 1 or backward lap as suspect.
-        if not p.dnf and not p.finished and lap == p.lap + 1:
+            if cp > p.current_checkpoint:
+                p.current_checkpoint = cp
+        # Implicit lap progression: accept any forward lap from the client.
+        # Was strict +1 only, but real-hardware testing shows the race
+        # could keep running past 4 laps without finishing — single
+        # PLAYER_STATE drops over the modem (the lap=N+1 packet) would
+        # then leave the server permanently stuck at p.lap=N even as the
+        # client sent lap=N+2, N+3, ... Now any `lap > p.lap` advances
+        # to the new value. Backward laps are still rejected.
+        if not p.dnf and not p.finished and lap > p.lap:
+            steps = lap - p.lap  # for logging
             p.lap = lap
             p.current_checkpoint = 0
             p.last_progress_time = time.time()
+            if steps > 1:
+                log.info("pid=%d implicit lap jump %d -> %d (modem drop?)",
+                         pid, p.lap - steps, p.lap)
             if p.lap >= self.lap_count:
                 p.finished = True
                 p.finish_time = time.time()

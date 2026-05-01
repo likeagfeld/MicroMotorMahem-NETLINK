@@ -98,7 +98,7 @@
 #define PLAYER_STUCK_TIMER       (64)
 #define PLAYER_CLOUD_TIMER      (20)
 #define RACE_START_TIMER        (180)
-#define RACE_END_TIMER			(120)
+#define RACE_END_TIMER			(240)
 #define ENEMY_HURT_TIMER        (20)
 #define ENEMY_JUMP_TIMER        (60)
 #define PUP_TIMER       	 	(380)
@@ -799,6 +799,7 @@ typedef struct  _GAME
     // game state variables
 	Sint16 		map_sprite_id;
 	Sint16		hud_sprite_id;
+	Sint16		pup_sprite_id;  /* dynamic PUP.TGA base — replaces brittle PUP_TILESET=144 hardcode */
 	Sint16 		p1_back_sprite_id;
 	Sint16 		p1_shadow_sprite_id;
 	Sint16 		p2_back_sprite_id;

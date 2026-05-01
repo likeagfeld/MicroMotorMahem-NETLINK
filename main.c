@@ -120,10 +120,20 @@ uint8_t mmm_get_game_state(void)           { return game.game_state; }
 
 int mmm_get_p2_port(void)
 {
-    /* Without multitap: Port B = jo_inputs[6]. With multitap on Port A: slot 1.
-     * Disasteroids' getP2Port() pattern. */
-    if (jo_is_input_available(1)) return 1;   /* multitap slot */
-    if (jo_is_input_available(6)) return 6;   /* Port B direct */
+    /* Returns a Smpc_Peripheral[] index — the same array KEY_PRESS reads
+     * from. Disasteroids' getP2Port() returns the jo_inputs[] index
+     * (cooked array) which is WRONG for KEY_PRESS callers, because
+     * joengine's input.c remaps SGL Smpc_Peripheral entries:
+     *     jo_inputs[0..5]  <- Smpc_Peripheral[0..5]   (port A)
+     *     jo_inputs[6..11] <- Smpc_Peripheral[15..20] (port B)
+     * (see __JO_SECOND_MULTITAP_OFFSET=54 in joengine/input.c).
+     *
+     * So a controller plugged into port B with no multitap shows up at
+     * Smpc_Peripheral[15], not [6]. Upstream MMM offline-2P knew this
+     * (create_player does pad_number += 15). Probe the raw SBL array. */
+    if (Smpc_Peripheral[15].id != 0xFF) return 15;  /* Port B main, no multitap */
+    if (Smpc_Peripheral[1].id  != 0xFF) return 1;   /* Port A multitap slot 2 */
+    if (Smpc_Peripheral[8].id  != 0xFF) return 8;   /* Port B multitap slot 1 */
     return -1;
 }
 
@@ -164,6 +174,35 @@ static void mmm_network_tick(void)
         NETLINK_BUS_STROBE = 0;
         g_led_counter = 0;
     }
+
+    /* Self-healing P2 gamepad re-pin: LOCAL_PLAYER_ACK can arrive AFTER
+     * mmm_online_start_race has already pinned gamepads (verified in
+     * 20:27 race log: PHASE_E COMPLETE 4s before "P2 added pid=1").
+     * At that moment my_player_id_2 was INVALID, so s_is_local[1]
+     * stayed false and the pinning's else-branch set
+     * players[1].gamepad = 7 (unused). Once the ACK arrives we have
+     * to fix that or P2 controls never work for the rest of the race.
+     * Runs every frame so it self-corrects no matter when the ACK
+     * actually shows up. */
+    if (g_online_mode && g_local_p2_active &&
+        g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
+        g_mnet.my_player_id_2 < 4 &&
+        (game.game_state == GAMESTATE_GAMEPLAY ||
+         game.game_state == GAMESTATE_RACE_START)) {
+        Uint8 p2 = g_mnet.my_player_id_2;
+        int p2port = mmm_get_p2_port();
+        if (p2port < 0) p2port = 7;
+        if (!s_is_local[p2] || players[p2].gamepad != (Sint8)p2port) {
+            s_is_local[p2] = true;
+            players[p2].gamepad = (Sint8)p2port;
+            {
+                char dbg[64];
+                sprintf(dbg, "DIAG_REPIN p2slot=%d gp=%d",
+                        (int)p2, p2port);
+                MNET_LOG_INFO(dbg);
+            }
+        }
+    }
 }
 
 /* Apply server-relayed input bits onto a remote player's cpu_* flags.
@@ -200,6 +239,8 @@ extern Uint8 saved_cam_mode;
 extern Uint8 current_players;
 extern Uint8 cd_track;
 extern Uint8 target_player;
+extern int   preview_tex;
+extern int   trackmap_tex;
 /* CDDA state — title screen leaves track 2 playing; we must stop it before
  * doing any jo_fs_read_file or jo_sprite_add_tga_tileset because the CD
  * block can't service ISO reads while the audio decoder owns the head. */
@@ -232,37 +273,23 @@ void mmm_online_start_race(void)
      * fullscreen otherwise. Same as Flicky/Utenyaa local-coop in online. */
     current_players = (g_local_p2_active ? 2 : 1);
 
-    /* Mark per-slot is_local based on server's view (lobby_state tagged it). */
+    /* Server assigns pids sequentially 0..total-1 (mserver.py:1759 — primaries
+     * first, then each client's local-coop P2's, then bots). So pid IS the
+     * slot index. Map directly without consulting lobby_players[] — the
+     * GAME_START handler wipes that array (mmm_net.c:318) before this
+     * function fires, which used to leave s_is_local[user_slot]=false.
+     * That false then triggered my_gamepad's "redirect non-local pad to
+     * port 7" branch every frame, eating ALL local input. (Alpha 0.4
+     * "no buttons work" regression — root cause.) */
     for (p = 0; p < 4; p++) {
         s_is_local[p] = false;
-        s_net_player_id[p] = MNET_INVALID_PLAYER_ID;
+        s_net_player_id[p] = (uint8_t)p;
         s_is_bot[p] = false;
     }
-    for (p = 0; p < g_mnet.lobby_count && p < 4; p++) {
-        s_is_local[p] = g_mnet.lobby_players[p].is_local;
-        s_net_player_id[p] = g_mnet.lobby_players[p].id;
-    }
-    /* Backstop: at minimum our own slot is local. */
     if (g_mnet.my_player_id < 4) s_is_local[g_mnet.my_player_id] = true;
     if (g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID && g_mnet.my_player_id_2 < 4)
         s_is_local[g_mnet.my_player_id_2] = true;
-
-    /* Resolve s_is_local + target_player by net pid (not slot-as-pid
-     * backstop above which uses pid as index — wrong for pid != slot).
-     * GAMEPAD pinning is deferred until AFTER create_player runs below
-     * because create_player rewrites players[].gamepad with its offline
-     * 0/15 pattern (or 0/1/2/3 for 4P) which clobbers any earlier value. */
-    {
-        int qp, primary = 0;
-        for (qp = 0; qp < 4; qp++) {
-            bool me1 = (s_net_player_id[qp] == g_mnet.my_player_id);
-            bool me2 = (s_net_player_id[qp] == g_mnet.my_player_id_2 &&
-                        g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID);
-            s_is_local[qp] = me1 || me2;
-            if (me1) primary = qp;
-        }
-        target_player = (Uint8)primary;
-    }
+    target_player = (g_mnet.my_player_id < 4) ? g_mnet.my_player_id : 0;
 
     /* Deterministic RNG seed from server. */
     srand(g_mnet.game_seed);
@@ -325,13 +352,42 @@ void mmm_online_start_race(void)
     /* Pin gamepads AFTER create_player (which would otherwise clobber
      * them with its offline pad_number scheme — slot 0 -> port 0,
      * slot 1 -> port 15 for 2P, or 0/1/2/3 for 4P, both wrong when
-     * the local user isn't slot 0). */
+     * the local user isn't slot 0).
+     *
+     * Local-coop P2 uses whatever slot `mmm_get_p2_port()` returns —
+     * slot 1 (multitap on port A) or slot 6 (port B direct). The old
+     * hardcoded 15 worked for offline 2P only because create_player
+     * happens to pick 15 in 2-player mode; in online local-coop with
+     * a 4-slot race, slot 15 is empty so KEY_PRESS reads nothing.
+     * Same slot resolution Disasteroids uses (main.h:getP2Port). */
     {
         int qp;
+        int p2port = g_local_p2_active ? mmm_get_p2_port() : -1;
+        if (p2port < 0) p2port = 7;  /* fallback: unused port */
         for (qp = 0; qp < 4; qp++) {
             if (qp == target_player)        players[qp].gamepad = 0;
-            else if (s_is_local[qp])        players[qp].gamepad = 15;
+            else if (s_is_local[qp])        players[qp].gamepad = (Sint8)p2port;
             else                            players[qp].gamepad = 7;
+        }
+
+        /* DIAG — dump peripheral state so we can see exactly which
+         * Smpc_Peripheral[] slots are populated and what the gamepad
+         * resolution picked. Reads .id which is 0xFF when no peripheral
+         * is connected at that slot, or a peripheral type code (0x02
+         * for standard digital pad, 0x16 for 3D pad). */
+        {
+            char dbg[96];
+            sprintf(dbg, "DIAG_PER ids=%02X %02X %02X %02X _ _ %02X _ _ _ _ _ _ _ _ %02X",
+                    Smpc_Peripheral[0].id, Smpc_Peripheral[1].id,
+                    Smpc_Peripheral[2].id, Smpc_Peripheral[3].id,
+                    Smpc_Peripheral[6].id, Smpc_Peripheral[15].id);
+            MNET_LOG_INFO(dbg);
+            sprintf(dbg, "DIAG_GP tp=%d gp0=%d gp1=%d gp2=%d gp3=%d p2port=%d p2act=%d",
+                    (int)target_player, (int)players[0].gamepad,
+                    (int)players[1].gamepad, (int)players[2].gamepad,
+                    (int)players[3].gamepad, p2port,
+                    g_local_p2_active ? 1 : 0);
+            MNET_LOG_INFO(dbg);
         }
     }
 
@@ -348,6 +404,17 @@ void mmm_online_start_race(void)
      * level transition). xpdata_ gets overwritten with track models; cars
      * are now safely captured in players_car[]. */
     jo_sprite_free_from(game.map_sprite_id);
+    /* preview_tex / trackmap_tex globals were set at LAST race's
+     * load_preview/load_trackmap to IDs > game.map_sprite_id. After the
+     * free_from above those IDs are no longer valid. The next
+     * load_preview/load_trackmap call jo_sprite_free_from(stale_id) which
+     * is a silent no-op when stale > __jo_sprite_id, but if a different
+     * tileset got reloaded with more sprites the old ID could fall INSIDE
+     * the new range and free out the freshly loaded TRACK.TGA. Reset
+     * both to a safe value (the just-freed map_sprite_id) so the next
+     * jo_sprite_free_from call is always a no-op against valid state. */
+    preview_tex = game.map_sprite_id;
+    trackmap_tex = game.map_sprite_id;
     ztClearText();
     jo_disable_background_3d_plane(JO_COLOR_Black);
     jo_clear_background(JO_COLOR_Black);
@@ -365,7 +432,11 @@ void mmm_online_start_race(void)
     MNET_LOG_INFO("PHASE_D_OK PREVIEW_TRACKMAP");
 
     init_3d_planes();
-    reset_demo();        /* sets game.game_state = GAMESTATE_RACE_START */
+    reset_demo();        /* sets game.game_state = GAMESTATE_RACE_START.
+                          * Side effect: also resets target_player=0, which
+                          * is wrong when our slot != 0 (e.g. Saturn B in a
+                          * 2H race where my_player_id=1). Restore it. */
+    if (g_mnet.my_player_id < 4) target_player = g_mnet.my_player_id;
     ztClearText();
     cam_mode = saved_cam_mode;
     MNET_LOG_INFO("PHASE_E COMPLETE state->RACE_START");
@@ -2673,7 +2744,7 @@ void				draw_player(int p)
 	if(players[p].current_powerup == 5 && players[p].powerup_active == true)//shield
 	{
 		jo_sprite_enable_half_transparency();
-		jo_3d_draw_scaled_billboard(PUP_TILESET + 7,players[p].x, players[p].y, players[p].z,2.0f);
+		jo_3d_draw_scaled_billboard(game.pup_sprite_id + 7,players[p].x, players[p].y, players[p].z,2.0f);
 		jo_sprite_disable_half_transparency();
 		/*slPushMatrix();
 		{
@@ -3040,14 +3111,14 @@ void draw_hud(void)
 			//draw current powerup sprite
 			if(players[0].current_powerup != 0)
 			{
-			jo_sprite_draw3D(PUP_TILESET + players[0].current_powerup -1,-78, -103, 50);
+			jo_sprite_draw3D(game.pup_sprite_id + players[0].current_powerup -1,-78, -103, 50);
 			}
 			jo_sprite_draw3D(game.hud_sprite_id+3,118, -94, 100);
 			jo_sprite_draw3D(game.hud_sprite_id+2,118, -110, 100);
 			//draw current powerup sprite
 			if(players[1].current_powerup != 0)
 			{
-			jo_sprite_draw3D(PUP_TILESET + players[1].current_powerup -1,78, -103, 50);
+			jo_sprite_draw3D(game.pup_sprite_id + players[1].current_powerup -1,78, -103, 50);
 			}			
 			jo_nbg2_printf(1, 1,  "PLAYER1");
 			jo_nbg2_printf(1, 3,  "%02d.%02d", players[0].mins,players[0].secs);
@@ -3062,64 +3133,49 @@ void draw_hud(void)
 			//draw current powerup sprite
 			if(players[0].current_powerup != 0)
 			{
-			jo_sprite_draw3D(PUP_TILESET + players[0].current_powerup -1,-160, -103, 50);
+			jo_sprite_draw3D(game.pup_sprite_id + players[0].current_powerup -1,-160, -103, 50);
 			}
 			
-			//laps
-			//jo_sprite_enable_half_transparency();
-			jo_sprite_draw3D(game.hud_sprite_id + 4,-218, 103, 100);
+			//laps — y=80 (was 103). Sprite center at y=103 with scale=2
+			//puts the bottom edge at y=119, beyond visible y=112; even
+			//y=95 (alpha 0.4 fix) had the bottom at y=111 right at the
+			//edge and the user's CRT overscan still chopped it off.
+			//y=80 -> bottom y=96, comfortably inside the safe area.
+			jo_sprite_draw3D(game.hud_sprite_id + 4,-218, 80, 100);
 			jo_sprite_change_sprite_scale(2);
-			
-			//jo_sprite_draw3D(game.hud_sprite_id + 5 + players[0].laps,-180, 103, 100);
 			if(players[0].laps>9)
 			{
-			
-			//divide laps by 10 to get first digit
 			p1_laps = players[0].laps/10;
-			jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-180, 103, 100);
-			//get modulus 10 to get second digit and move original sprite to right by 16
-			p1_laps = players[0].laps % 10;		
-			jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-148, 103, 100);
-			
+			jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-180, 80, 100);
+			p1_laps = players[0].laps % 10;
+			jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-148, 80, 100);
 			}else
 			{
-			p1_laps = players[0].laps;	
-			jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-180, 103, 100);
-			}	
-			
+			p1_laps = players[0].laps;
+			jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-180, 80, 100);
+			}
 			jo_sprite_restore_sprite_scale();
-			jo_sprite_disable_half_transparency();	
-			
+			jo_sprite_disable_half_transparency();
+
 			jo_sprite_draw3D(game.hud_sprite_id+3,39, -94, 100);
 			jo_sprite_draw3D(game.hud_sprite_id+2,39, -110, 100);
-			//draw current powerup sprite
-			//draw current powerup sprite
 			if(players[1].current_powerup != 0)
 			{
-			jo_sprite_draw3D(PUP_TILESET + players[1].current_powerup -1,0, -103, 50);
+			jo_sprite_draw3D(game.pup_sprite_id + players[1].current_powerup -1,0, -103, 50);
 			}
-			//laps
-			//jo_sprite_enable_half_transparency();
-			jo_sprite_draw3D(game.hud_sprite_id + 4,4, 103, 100);
+			jo_sprite_draw3D(game.hud_sprite_id + 4,4, 80, 100);
 			jo_sprite_change_sprite_scale(2);
-			
-			//jo_sprite_draw3D(game.hud_sprite_id + 5 + players[1].laps,60, 103, 100);
 			if(players[1].laps>9)
 			{
-			
-			//divide laps by 10 to get first digit
 			p2_laps = players[1].laps/10;
-			jo_sprite_draw3D(game.hud_sprite_id + 5 + p2_laps,28, 103, 100);
-			//get modulus 10 to get second digit and move original sprite to right by 16
-			p2_laps = players[1].laps % 10;		
-			jo_sprite_draw3D(game.hud_sprite_id + 5 + p2_laps,60, 103, 100);
-			
+			jo_sprite_draw3D(game.hud_sprite_id + 5 + p2_laps,28, 80, 100);
+			p2_laps = players[1].laps % 10;
+			jo_sprite_draw3D(game.hud_sprite_id + 5 + p2_laps,60, 80, 100);
 			}else
 			{
-			p2_laps = players[1].laps;	
-			jo_sprite_draw3D(game.hud_sprite_id + 5 + p2_laps,60, 103, 100);
-			}	
-			
+			p2_laps = players[1].laps;
+			jo_sprite_draw3D(game.hud_sprite_id + 5 + p2_laps,60, 80, 100);
+			}
 			jo_sprite_restore_sprite_scale();
 			//jo_sprite_disable_half_transparency();	
 		
@@ -3146,7 +3202,7 @@ void draw_hud(void)
 		//draw current powerup sprite
 			if(players[target_player].current_powerup != 0)
 			{
-			jo_sprite_draw3D(PUP_TILESET + players[target_player].current_powerup -1,-78, -103, 50);
+			jo_sprite_draw3D(game.pup_sprite_id + players[target_player].current_powerup -1,-78, -103, 50);
 			}
 			jo_sprite_draw3D(game.hud_sprite_id+3,118, -94, 100);
 			jo_sprite_draw3D(game.hud_sprite_id+2,118, -110, 100);
@@ -3173,24 +3229,26 @@ void draw_hud(void)
 		jo_nbg2_printf(1, 1,  "TIME");
 		jo_nbg2_printf(1, 3,  "%02d.%02d", players[target_player].mins,players[target_player].secs);
 		}
-		//laps — shifted up from y=103 to y=95 so the 2x-scaled digits
-		//don't clip the bottom of the screen on real Saturn (sprite is
-		//~32px tall at scale 2; y=103 + 16 = bottom-line-119 > visible 112).
-		jo_sprite_draw3D(game.hud_sprite_id + 4,-140, 95, 100);
+		//laps + position — shifted further up to y=80 so the 2x-scaled
+		//digits (16px sprite -> 32px at scale 2) clear the screen
+		//bottom on real Saturn even with TV overscan eating a few rows.
+		//Sprite center y=80 gives top=64, bottom=96 — well inside the
+		//safe area (visible y goes to ~112; overscan typically clips ~10).
+		jo_sprite_draw3D(game.hud_sprite_id + 4,-140, 80, 100);
 		jo_sprite_change_sprite_scale(2);
 		if(players[target_player].laps>9)
 		{
 		p1_laps = players[target_player].laps/10;
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 95, 100);
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 80, 100);
 		p1_laps = players[target_player].laps % 10;
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-68, 95, 100);
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-68, 80, 100);
 		}else
 		{
 		p1_laps = players[target_player].laps;
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 95, 100);
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + p1_laps,-100, 80, 100);
 		}
 		//positon
-		jo_sprite_draw3D(game.hud_sprite_id + 5 + players[target_player].position,128, 95, 100);
+		jo_sprite_draw3D(game.hud_sprite_id + 5 + players[target_player].position,128, 80, 100);
 		
 		jo_sprite_restore_sprite_scale();
 		//jo_sprite_disable_half_transparency();	
@@ -3696,65 +3754,63 @@ void			    my_draw(void)
 
 	
 	slCurWindow(winNear);
-	//race_start();
-	//jo_3d_camera_look_at(&cam2);
-	//current_camera = cam2;
-	if(game.mode == GAMEMODE_2PLAYERVS)
+	/* Right-half view: offline 2PLAYERVS uses slot 1; online local-coop
+	 * follows the local-P2 slot which is whatever pid the server assigned
+	 * (typically slot 2 if there's another remote Saturn at slot 1). */
 	{
-	move_camera(&cam2,1);
-		
+	int rt = -1;
+	if (game.mode == GAMEMODE_2PLAYERVS) {
+		rt = 1;
+	} else if (g_online_mode && g_local_p2_active &&
+	           g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
+	           (int)g_mnet.my_player_id_2 < (int)game.players) {
+		rt = (int)g_mnet.my_player_id_2;
+	}
+	if (rt >= 0)
+	{
+	move_camera(&cam2, rt);
+
 	slPushMatrix();
     {
-		
-		slRotX(DEGtoANG(players[1].cam_angle_z));
-        slRotZ(DEGtoANG(players[1].cam_angle_x));
-        slRotY(DEGtoANG(-players[1].cam_angle_y));
-        slTranslate(toFIXED(-players[1].cam_pos_x), toFIXED(-players[1].cam_pos_y), toFIXED(-players[1].cam_pos_z));
-		
+
+		slRotX(DEGtoANG(players[rt].cam_angle_z));
+        slRotZ(DEGtoANG(players[rt].cam_angle_x));
+        slRotY(DEGtoANG(-players[rt].cam_angle_y));
+        slTranslate(toFIXED(-players[rt].cam_pos_x), toFIXED(-players[rt].cam_pos_y), toFIXED(-players[rt].cam_pos_z));
+
 		slPushMatrix();
 		{
         if(use_light) computeLight();
 		}
 		slPopMatrix();
-		
+
 	for(Uint16 i = 0; i < total_sections; i++)
 	{
-		draw_map(&map_section[i],1);
-	
+		draw_map(&map_section[i], rt);
 	}
-	
-	draw_player(1);
-	//animate_player(1);
-	//player_collision_handling(1);
-	
-	draw_player(0);
-	
-	
-	
+
+	for(int dp = 0; dp < game.players; dp++) draw_player(dp);
+
 	for(Uint16 w = 0; w < powerup_total; w++)
 	{
-	
-	//set draw distance
-	x_dist = JO_ABS(players[1].cam_pos_x - powerups[w].x);
-	y_dist = JO_ABS(players[1].cam_pos_y - powerups[w].y);
-	z_dist = JO_ABS(players[1].cam_pos_z - powerups[w].z);
-	
+	x_dist = JO_ABS(players[rt].cam_pos_x - powerups[w].x);
+	y_dist = JO_ABS(players[rt].cam_pos_y - powerups[w].y);
+	z_dist = JO_ABS(players[rt].cam_pos_z - powerups[w].z);
+
 		if((x_dist + y_dist + z_dist) < DRAW_DISTANCE)
 		{
-			//if(!powerups[w].used)
-		//	{
 			draw_powerups(&powerups[w]);
-			//}
 		}
-	}	
-	
+	}
+
 	if(game.level_inside == true)
 		{
 		draw_walls();
 		}
-	
+
 	}
 	slPopMatrix();
+	}
 	}
 	
 	draw_hud();
@@ -5407,12 +5463,32 @@ void		cpu_control(void)
 
 	}
 
-	/* In online mode, advance our local frame counter for next frame's INPUT */
+	/* The online PLAYER_STATE send + race-finish detection + remote-sync
+	 * block USED TO LIVE HERE — but cpu_control returns early at line
+	 * 5340 if game.mode != 1PLAYERRACE/SURVIVAL. Online mode is
+	 * GAMEMODE_NETLINKRACE, so that block was dead code. Moved into
+	 * my_gamepad() (which runs every frame in GAMEPLAY/RACE_START
+	 * regardless of game.mode). Confirmed via diagnostic build:
+	 * NO server-side PLAYER_STATE messages were received before the
+	 * move; race always ended via 180s stall. */
+}
+
+
+
+void			my_gamepad(void)
+{
+	if (game.game_state != GAMESTATE_GAMEPLAY && game.game_state != GAMESTATE_RACE_START)
+       return;
+
+	/* Online race-state plumbing — moved here from cpu_control where
+	 * it was dead code (cpu_control returns early at line 5340 for
+	 * NETLINKRACE mode, so PLAYER_STATE never reached the wire and the
+	 * race always ended via 180s stall). Order: frame ctr, race-finish
+	 * detection, P1 PLAYER_STATE + DIAG, P2 PLAYER_STATE, PLAYER_SYNC
+	 * consumer for remote players. Runs only in GAMEPLAY (the
+	 * RACE_START countdown produces no useful state to send yet). */
 	if (g_online_mode) g_mnet.local_frame++;
 
-	/* Online: server signaled race finished — transition to end-level screen.
-	 * end_level()'s START handler in gameplay returns us to title; we hijack
-	 * after a fixed delay to go back to lobby instead. */
 	if (g_online_mode && g_mnet.race_finished &&
 	    game.game_state == GAMESTATE_GAMEPLAY) {
 		g_mnet.race_finished = false;
@@ -5420,13 +5496,8 @@ void		cpu_control(void)
 		game.game_state = GAMESTATE_END_LEVEL;
 	}
 
-	/* Online: send our PLAYER_STATE (throttled internally to every 4 frames)
-	 * and snap remote players' position/rotation to last server snapshot
-	 * (passthrough sync — physics still runs, but server keeps it bounded). */
 	if (g_online_mode && game.game_state == GAMESTATE_GAMEPLAY) {
-		int p;
-		/* P1 = our local slot (target_player), not server net pid.
-		 * P2 (local-coop) send deferred. */
+		int op;
 		uint8_t my_id = (uint8_t)target_player;
 
 		if (my_id < MNET_MAX_PLAYERS && (int)my_id < game.players) {
@@ -5438,48 +5509,90 @@ void		cpu_control(void)
 				players[my_id].current_checkpoint,
 				players[my_id].current_waypoint,
 				players[my_id].dist_to_next_waypoint);
-		}
-		/* P2 PLAYER_STATE deferred — local-coop P2 movement only visible
-		 * on this Saturn until we move this producer to mmm_net.c. */
 
-		for (p = 0; p < game.players && p < MNET_MAX_PLAYERS; p++) {
-			if (s_is_local[p]) continue;
+			/* DIAG — INIT once on first GAMEPLAY frame, transition log
+			 * on lap/cp changes, heartbeat every 60 frames (~2 sec). */
 			{
-				/* Map local slot p -> server-assigned net_player_id.
-				 * remote_states is keyed by net pid (set by server when it
-				 * broadcasts PLAYER_SYNC), not by slot. With 1H+1B, server
-				 * gives bot pid=2 but bot lives in players[1] locally —
-				 * looking up by slot=1 yields empty state and bot is invisible. */
-				uint8_t net_id = s_net_player_id[p];
-				const mnet_remote_state_t* rs;
-				if (net_id == MNET_INVALID_PLAYER_ID) continue;
-				rs = mnet_get_remote_state(net_id);
-				if (!rs) continue;
-				players[p].x = rs->x;
-				players[p].y = rs->y;
-				players[p].z = rs->z;
-				players[p].ry = rs->ry;
-				players[p].physics_speed = (float)rs->speed / 256.0f;
-				players[p].laps = rs->lap;
-				players[p].current_checkpoint = rs->checkpoint;
-				players[p].current_waypoint = rs->cur_wp;
-				players[p].dist_to_next_waypoint = rs->dist_wp;
+				static int s_diag_last_lap_p1 = 0;
+				static int s_diag_last_cp_p1 = 0;
+				static int s_diag_frame_ctr = 0;
+				static bool s_diag_inited = false;
+				char dbg[96];
+				s_diag_frame_ctr++;
+				if (!s_diag_inited) {
+					sprintf(dbg, "DIAG_P1 INIT lap=%d cp=%d x=%d z=%d gp=%d",
+						(int)players[my_id].laps,
+						(int)players[my_id].current_checkpoint,
+						(int)players[my_id].x, (int)players[my_id].z,
+						(int)players[my_id].gamepad);
+					MNET_LOG_INFO(dbg);
+					s_diag_last_lap_p1 = players[my_id].laps;
+					s_diag_last_cp_p1 = players[my_id].current_checkpoint;
+					s_diag_inited = true;
+				}
+				if ((int)players[my_id].laps != s_diag_last_lap_p1) {
+					sprintf(dbg, "DIAG_P1 LAP %d->%d (cp=%d x=%d z=%d)",
+						s_diag_last_lap_p1, (int)players[my_id].laps,
+						(int)players[my_id].current_checkpoint,
+						(int)players[my_id].x, (int)players[my_id].z);
+					MNET_LOG_INFO(dbg);
+					s_diag_last_lap_p1 = players[my_id].laps;
+				}
+				if ((int)players[my_id].current_checkpoint != s_diag_last_cp_p1) {
+					sprintf(dbg, "DIAG_P1 CP %d->%d (lap=%d x=%d z=%d)",
+						s_diag_last_cp_p1, (int)players[my_id].current_checkpoint,
+						(int)players[my_id].laps,
+						(int)players[my_id].x, (int)players[my_id].z);
+					MNET_LOG_INFO(dbg);
+					s_diag_last_cp_p1 = players[my_id].current_checkpoint;
+				}
+				if ((s_diag_frame_ctr % 60) == 0) {
+					sprintf(dbg, "DIAG_P1 HB f=%d lap=%d cp=%d x=%d z=%d spd=%d",
+						s_diag_frame_ctr,
+						(int)players[my_id].laps,
+						(int)players[my_id].current_checkpoint,
+						(int)players[my_id].x, (int)players[my_id].z,
+						(int)(players[my_id].physics_speed * 100.0f));
+					MNET_LOG_INFO(dbg);
+				}
 			}
 		}
+
+		if (g_local_p2_active &&
+		    g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID) {
+			uint8_t p2 = g_mnet.my_player_id_2;
+			if (p2 < MNET_MAX_PLAYERS && (int)p2 < game.players) {
+				mnet_send_player_state_p2(
+					players[p2].x, players[p2].y, players[p2].z,
+					players[p2].ry,
+					(int16_t)(players[p2].physics_speed * 256.0f),
+					players[p2].laps,
+					players[p2].current_checkpoint,
+					players[p2].current_waypoint,
+					players[p2].dist_to_next_waypoint);
+			}
+		}
+
+		/* PLAYER_SYNC consumer: snap non-local players to server snapshot. */
+		for (op = 0; op < game.players && op < MNET_MAX_PLAYERS; op++) {
+			uint8_t net_id;
+			const mnet_remote_state_t* rs;
+			if (s_is_local[op]) continue;
+			net_id = s_net_player_id[op];
+			if (net_id == MNET_INVALID_PLAYER_ID) continue;
+			rs = mnet_get_remote_state(net_id);
+			if (!rs) continue;
+			players[op].x = rs->x;
+			players[op].y = rs->y;
+			players[op].z = rs->z;
+			players[op].ry = rs->ry;
+			players[op].physics_speed = (float)rs->speed / 256.0f;
+			players[op].laps = rs->lap;
+			players[op].current_checkpoint = rs->checkpoint;
+			players[op].current_waypoint = rs->cur_wp;
+			players[op].dist_to_next_waypoint = rs->dist_wp;
+		}
 	}
-
-
-	
-}
-
-
-
-void			my_gamepad(void)
-{
-	if (game.game_state != GAMESTATE_GAMEPLAY && game.game_state != GAMESTATE_RACE_START)
-       return;
-
-
 
   /* if(current_players == 0)
 	{
@@ -5557,6 +5670,24 @@ void			my_gamepad(void)
 				if (KEY_PRESS(p2port, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
 				if (KEY_PRESS(p2port, PER_DGT_TC)) bits |= MNET_INPUT_HORN;
 				mnet_send_input_state_p2(g_mnet.local_frame + 1, bits);
+
+				/* DIAG — log P2 input transitions: every time `bits`
+				 * flips between zero and non-zero, plus the actual
+				 * raw .data value at p2port. If no log lines ever fire
+				 * here, the P2 controller is at a different slot than
+				 * mmm_get_p2_port() returned. */
+				{
+					static uint8_t s_diag_p2_last_bits = 0;
+					if (bits != s_diag_p2_last_bits) {
+						char dbg[80];
+						sprintf(dbg, "DIAG_P2 port=%d bits=%02X data=%04X id=%02X",
+							p2port, (int)bits,
+							(int)Smpc_Peripheral[p2port].data,
+							(int)Smpc_Peripheral[p2port].id);
+						MNET_LOG_INFO(dbg);
+						s_diag_p2_last_bits = bits;
+					}
+				}
 			} else {
 				/* P2 controller was unplugged mid-race — tell server to drop
 				 * the slot so it doesn't ghost at last position until heartbeat
@@ -6305,34 +6436,62 @@ void				end_level(void)
 if (game.game_state != GAMESTATE_END_LEVEL)
        return;
 
-	/* Online: show race-finish results for ~5 seconds, then back to lobby. */
+	/* Online race results — centered title, aligned 4-column rows, START
+	 * skips the auto-advance timer. Font has uppercase A-Z + digits +
+	 * `-` `/` only, so no `:` in time and no lowercase. NBG2 is 40 cols
+	 * wide; columns 6-33 give a clean 28-char band centered horizontally. */
 	if (g_online_mode) {
-		jo_nbg2_printf(13, 6, "RACE COMPLETE");
+		static const char* const POS_LABEL[5] = { "DNF", "1ST", "2ND", "3RD", "4TH" };
+		int i;
+		int sec_left;
+
+		jo_nbg2_printf(13, 4, "- RACE COMPLETE -");
+		jo_nbg2_printf( 6, 6, "POS  NAME             TIME");
+		jo_nbg2_printf( 6, 7, "--------------------------");
+
 		if (g_mnet.has_last_results) {
-			int i;
-			jo_nbg2_printf(8, 8, "POS NAME           TIME");
 			for (i = 0; i < g_mnet.finish_count && i < MNET_MAX_PLAYERS; i++) {
+				uint8_t pid;
+				const char* nm = "???";
+				const char* pos_str;
+				int j, pos, mins, secs;
+
 				if (!g_mnet.finish[i].active) continue;
-				{
-					uint8_t pid = g_mnet.finish[i].player_id;
-					const char* nm = "???";
-					int j;
-					for (j = 0; j < g_mnet.game_roster_count; j++) {
-						if (g_mnet.game_roster[j].active &&
-						    g_mnet.game_roster[j].id == pid) {
-							nm = g_mnet.game_roster[j].name;
-							break;
-						}
+
+				pid = g_mnet.finish[i].player_id;
+				for (j = 0; j < g_mnet.game_roster_count; j++) {
+					if (g_mnet.game_roster[j].active &&
+					    g_mnet.game_roster[j].id == pid) {
+						nm = g_mnet.game_roster[j].name;
+						break;
 					}
-					jo_nbg2_printf(8, 9 + i, "%-3d %-14s %4d  ",
-						g_mnet.finish[i].position, nm,
-						g_mnet.finish[i].total_time);
+				}
+
+				pos = g_mnet.finish[i].position;
+				pos_str = (pos >= 1 && pos <= 4) ? POS_LABEL[pos] : POS_LABEL[0];
+
+				mins = g_mnet.finish[i].total_time / 60;
+				secs = g_mnet.finish[i].total_time % 60;
+
+				/* DNF row: dash out the time field */
+				if (pos == 0 || g_mnet.finish[i].total_time == 0) {
+					jo_nbg2_printf(6, 8 + i, "%-4s %-16s ----  ",
+					               pos_str, nm);
+				} else {
+					jo_nbg2_printf(6, 8 + i, "%-4s %-16s %d-%02d ",
+					               pos_str, nm, mins, secs);
 				}
 			}
 		}
-		jo_nbg2_printf(8, 22, "RETURNING TO LOBBY...");
+
+		/* Live countdown + skip-to-lobby hint, both centered */
+		sec_left = (game.race_end_timer + 29) / 30;
+		if (sec_left < 0) sec_left = 0;
+		jo_nbg2_printf( 7, 20, "RETURNING TO LOBBY IN %d ", sec_left);
+		jo_nbg2_printf( 9, 22, "PRESS START TO SKIP");
+
 		game.race_end_timer--;
-		if (game.race_end_timer <= 0) {
+		if (game.race_end_timer <= 0 || KEY_DOWN(0, PER_DGT_ST)) {
 			ztClearText();
 			game.game_state = GAMESTATE_LOBBY;
 		}
@@ -7330,10 +7489,16 @@ void gameLoop(void)
 }
 
 void			load_player_and_enemies(void)
-{	
+{
 	load_4bits_car_textures();
 	load_4bits_player_textures();
-	jo_sprite_add_tga_tileset("TEX", "PUP.TGA",JO_COLOR_Green,PUP_Tileset,8);		
+	/* Capture PUP base id dynamically. Was hardcoded as PUP_TILESET=144
+	 * in objects.h which assumed exactly 12 cars + 132 player textures
+	 * before this call — fragile if either count drifts. game.pup_sprite_id
+	 * is now the source of truth (HUD/PUP draws use it via the
+	 * PUP_TILESET macro alias). */
+	game.pup_sprite_id = jo_sprite_add_tga_tileset(
+		"TEX", "PUP.TGA", JO_COLOR_Green, PUP_Tileset, 8);
 }
 
 
