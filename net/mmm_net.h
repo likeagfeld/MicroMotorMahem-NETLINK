@@ -190,6 +190,17 @@ typedef struct {
     int heartbeat_counter;
     int frame_count;
 
+    /* SYNC DIAGNOSTICS — per-pid counters bumped in process_input_relay
+     * and process_player_sync, reset on race start. Read by main.c
+     * gameplay diagnostic to log per-second receive rates and freshness
+     * of remote state, which are the metrics needed to fine-tune sync
+     * between online players. */
+    uint16_t diag_rx_input_relay[MNET_MAX_PLAYERS];
+    uint16_t diag_rx_player_sync[MNET_MAX_PLAYERS];
+    uint16_t diag_last_sync_frame[MNET_MAX_PLAYERS]; /* server frame_num from last sync */
+    int16_t  diag_last_sync_x[MNET_MAX_PLAYERS];     /* last server-asserted x (for delta calc) */
+    int16_t  diag_last_sync_z[MNET_MAX_PLAYERS];     /* last server-asserted z */
+
     /* Status */
     const char* status_msg;
     int connect_stage;

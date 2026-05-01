@@ -550,156 +550,17 @@ Uint8				music_vol = 6;
 Sint16 				floor_x = 0;
 Sint16 				floor_z = 0;
 
-/* mmm_diag_race_state — comprehensive read-only dump of VDP1 sprite
- * allocator state, sprite definitions for the four key tilesets
- * (CAR/PLAYER/PUP/MAP/HUD), palette IDs, and raw VRAM bytes at the
- * sprite addresses. Called from mmm_online_start_race PHASE C right
- * after init_3d_planes. Designed so a SINGLE race produces enough
- * data to diagnose any visual corruption without another test cycle.
- *
- * What we'll be able to tell from the output:
- *  - DIAG_RACE: was the BIN parsed correctly (model/section counts)?
- *  - DIAG_SPR : last sprite id, dynamic vs hardcoded base values match?
- *  - DIAG_DEF : are HUD/PUP/MAP sprite defs (width/height/adr) sane?
- *               If width=0 or adr=0 for a known-loaded tileset → VRAM
- *               allocator pointer is wrong, sprite data isn't where
- *               the rendering code is reading from. Classic source of
- *               "wrong colors / mix of static" symptoms.
- *  - DIAG_HC  : __jo_sprite_def[hardcoded id] vs dynamic id — if
- *               PUP_TILESET=144 doesn't have width=16, the static
- *               ATTRIBUTE arrays in objects.h reference the wrong
- *               sprite (different size/colors → corrupt render).
- *  - DIAG_PAL : palette IDs assigned to each LUT — wrong CRAM mapping
- *               also produces "wrong colors" without affecting geometry.
- *  - DIAG_VR  : first 16 raw bytes at HUD's actual VRAM address (cache-
- *               through alias 0x25C00000). If they're 00s the sprite
- *               data didn't get DMA'd in. If they're ASCII or something
- *               weird → wrong region got copied here.
- *  - DIAG_XP  : xpdata_[0..2] pointers + first dword behind each.
- */
+/* mmm_diag_race_state — race-start landmark log.
+ * Compact one-liner now that the rendering bug is fixed; track id and
+ * BIN totals are useful breadcrumbs when correlating client-side events
+ * to server logs (matchmaking, lap progression, race-finish broadcast). */
 void mmm_diag_race_state(int race_counter, int track)
 {
     char dbg[96];
-    int last_id = jo_get_last_sprite_id();
-
     sprintf(dbg, "DIAG_RACE n=%d t=%d models=%d sect=%d wp=%d",
             race_counter, track,
             (int)model_total, (int)total_sections, (int)total_waypoints);
     MNET_LOG_INFO(dbg);
-
-    sprintf(dbg, "DIAG_SPR last=%d dynMAP=%d dynHUD=%d dynPUP=%d",
-            last_id,
-            (int)game.map_sprite_id,
-            (int)game.hud_sprite_id,
-            (int)game.pup_sprite_id);
-    MNET_LOG_INFO(dbg);
-
-    /* Sprite definitions — width=0 or adr=0 for a populated id ==
-     * the sprite was never written to VRAM. */
-    {
-        jo_texture_definition* h = &__jo_sprite_def[(int)game.hud_sprite_id];
-        jo_texture_definition* pu = &__jo_sprite_def[(int)game.pup_sprite_id];
-        jo_texture_definition* m = &__jo_sprite_def[(int)game.map_sprite_id];
-        sprintf(dbg, "DIAG_DEF H:%dx%d@%X P:%dx%d@%X M:%dx%d@%X",
-                (int)h->width, (int)h->height, (unsigned)h->adr,
-                (int)pu->width, (int)pu->height, (unsigned)pu->adr,
-                (int)m->width, (int)m->height, (unsigned)m->adr);
-        MNET_LOG_INFO(dbg);
-    }
-
-    /* Hardcoded constant sanity check. PLAYER_TILESET=12, PUP_TILESET=144,
-     * MAP_TILESET=175 (objects.h). If those slots' .width is 0 or doesn't
-     * match the expected tile size for that tileset, the static ATTRIBUTE
-     * arrays in objects.h are pointing at the wrong sprite ids and we'll
-     * see "wrong colors / mix of static" in the rendered output. */
-    {
-        jo_texture_definition* pl = &__jo_sprite_def[12];   /* PLAYER_TILESET */
-        jo_texture_definition* pu = &__jo_sprite_def[144];  /* PUP_TILESET   */
-        jo_texture_definition* mp = &__jo_sprite_def[175];  /* MAP_TILESET   */
-        sprintf(dbg, "DIAG_HC PL12:%dx%d@%X PU144:%dx%d@%X MP175:%dx%d@%X",
-                (int)pl->width, (int)pl->height, (unsigned)pl->adr,
-                (int)pu->width, (int)pu->height, (unsigned)pu->adr,
-                (int)mp->width, (int)mp->height, (unsigned)mp->adr);
-        MNET_LOG_INFO(dbg);
-    }
-
-    /* Bracket the MAP tileset extent — sample slots 175 (first), 176
-     * (second tile, if loaded), 200 (mid-set), 218 (last). Maps the
-     * 44 expected tile range onto 4 probe points. If only 175 has new
-     * track-tile dimensions and 176/200/218 still hold cold-boot
-     * TITLE.TGA's 48x48@old_adr metadata, jo_sprite_add_tga_tileset
-     * silently bailed after the first iteration. */
-    {
-        jo_texture_definition* d175 = &__jo_sprite_def[175];
-        jo_texture_definition* d176 = &__jo_sprite_def[176];
-        jo_texture_definition* d200 = &__jo_sprite_def[200];
-        jo_texture_definition* d218 = &__jo_sprite_def[218];
-        sprintf(dbg, "DIAG_BR 175:%dx%d@%X 176:%dx%d@%X",
-                (int)d175->width, (int)d175->height, (unsigned)d175->adr,
-                (int)d176->width, (int)d176->height, (unsigned)d176->adr);
-        MNET_LOG_INFO(dbg);
-        sprintf(dbg, "DIAG_BR 200:%dx%d@%X 218:%dx%d@%X",
-                (int)d200->width, (int)d200->height, (unsigned)d200->adr,
-                (int)d218->width, (int)d218->height, (unsigned)d218->adr);
-        MNET_LOG_INFO(dbg);
-    }
-
-    /* Pool usage at PHASE_E. If mem% is near 100, the malloc pool is
-     * exhausted and subsequent jo_sprite_add_tga_tileset iterations
-     * couldn't allocate tile_image buffers — but the OOM bailout would
-     * normally return -1, so this needs to coexist with the LT_POST
-     * log to be conclusive. */
-    sprintf(dbg, "DIAG_USE mem=%d%% spr=%d%%",
-            0, 0);
-    MNET_LOG_INFO(dbg);
-
-    /* Palette CRAM mapping. */
-    sprintf(dbg, "DIAG_PAL sky=%d flr=%d fnt=%d prv=%d trk=%d",
-            (int)sky_pal.id, (int)floor_pal.id, (int)font_pal.id,
-            (int)preview_pal.id, (int)trackmap_pal.id);
-    MNET_LOG_INFO(dbg);
-
-    /* Sample 16 raw bytes from HUD's VRAM via cache-through alias.
-     * VDP1 sprite VRAM base is 0x05C00000, sprite-relative offsets are
-     * stored in 8-byte units (.adr * 8 = byte offset). Cache-through
-     * alias adds 0x20000000 to bypass D-cache. If the bytes are all 00
-     * the sprite wasn't loaded; ASCII-looking bytes mean wrong region
-     * got DMA'd here; sane palette indices = sprite is actually there. */
-    {
-        Uint16 hud_adr = __jo_sprite_def[(int)game.hud_sprite_id].adr;
-        volatile unsigned char* p =
-            (volatile unsigned char*)(0x25C00000UL + ((unsigned long)hud_adr << 3));
-        sprintf(dbg, "DIAG_VR HUD@%lX b=%02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X",
-                0x05C00000UL + ((unsigned long)hud_adr << 3),
-                p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],
-                p[8], p[9], p[10], p[11], p[12], p[13], p[14], p[15]);
-        MNET_LOG_INFO(dbg);
-    }
-
-    /* Same VRAM sample but for MAP/TRACK sprite (the one that actually
-     * shows up as the track polygons). Different from HUD — if HUD looks
-     * correct but MAP looks wrong, the issue is in load_textures path,
-     * not in the boot-time sprite allocation. */
-    {
-        Uint16 map_adr = __jo_sprite_def[(int)game.map_sprite_id].adr;
-        volatile unsigned char* p =
-            (volatile unsigned char*)(0x25C00000UL + ((unsigned long)map_adr << 3));
-        sprintf(dbg, "DIAG_VR MAP@%lX b=%02X%02X%02X%02X %02X%02X%02X%02X %02X%02X%02X%02X",
-                0x05C00000UL + ((unsigned long)map_adr << 3),
-                p[0], p[1], p[2], p[3], p[4], p[5], p[6], p[7],
-                p[8], p[9], p[10], p[11]);
-        MNET_LOG_INFO(dbg);
-    }
-
-    /* xpdata pointers + first dword behind each (track geometry sanity). */
-    {
-        unsigned int p0 = xpdata_[0] ? *((unsigned int*)xpdata_[0]) : 0xDEADBEEF;
-        unsigned int p1 = xpdata_[1] ? *((unsigned int*)xpdata_[1]) : 0xDEADBEEF;
-        sprintf(dbg, "DIAG_XP xp0=%p xp1=%p xp2=%p p0=%08X p1=%08X",
-                (void*)xpdata_[0], (void*)xpdata_[1], (void*)xpdata_[2],
-                p0, p1);
-        MNET_LOG_INFO(dbg);
-    }
 }
 
 //from XL2//
@@ -4719,15 +4580,6 @@ void			load_textures(char * filename, int total_tiles)
 {
 	jo_sprite_free_from(game.map_sprite_id);
 	game.map_sprite_id = jo_sprite_add_tga_tileset("TEX", filename,JO_COLOR_Red,MAP_Tileset,total_tiles);
-
-	if (g_online_mode) {
-		char dbg[96];
-		int post_id = jo_get_last_sprite_id();
-		int delta = post_id - (int)game.map_sprite_id + 1;
-		sprintf(dbg, "DIAG_LT ret=%d sid=%d added=%d",
-			(int)game.map_sprite_id, post_id, delta);
-		MNET_LOG_INFO(dbg);
-	}
 }
 
 void			load_level(void)
@@ -4761,11 +4613,6 @@ void            load_preview(char * filename)
 	jo_sprite_free_from(preview_tex);
 	jo_set_tga_default_palette(&preview_pal);
 	preview_tex = jo_sprite_add_tga("BG", filename, JO_COLOR_Transparent);
-	if (g_online_mode) {
-		char dbg[96];
-		sprintf(dbg, "DIAG_LP ret=%d sid=%d", preview_tex, jo_get_last_sprite_id());
-		MNET_LOG_INFO(dbg);
-	}
 }
 
 void            load_trackmap(char * filename)
@@ -4773,11 +4620,6 @@ void            load_trackmap(char * filename)
 	jo_sprite_free_from(trackmap_tex);
 	jo_set_tga_default_palette(&trackmap_pal);
 	trackmap_tex = jo_sprite_add_tga("BG", filename, JO_COLOR_Transparent);
-	if (g_online_mode) {
-		char dbg[96];
-		sprintf(dbg, "DIAG_LM ret=%d sid=%d", trackmap_tex, jo_get_last_sprite_id());
-		MNET_LOG_INFO(dbg);
-	}
 }
 
 void	set_palette(Uint16 * palette, Uint16 TextureId)
@@ -5752,19 +5594,34 @@ void			my_gamepad(void)
 						(int)players[my_id].x, (int)players[my_id].z,
 						(int)(players[my_id].physics_speed * 100.0f));
 					MNET_LOG_INFO(dbg);
-				}
-				/* Sprite-allocator drift detector: if jo_get_last_sprite_id()
-				 * changes during gameplay, something is allocating new
-				 * sprites mid-race and could overflow VDP1 VRAM. Logs
-				 * only on transition so it's not noisy. */
-				{
-					static int s_diag_last_spr_id = -1;
-					int cur_id = jo_get_last_sprite_id();
-					if (cur_id != s_diag_last_spr_id) {
-						sprintf(dbg, "DIAG_SPR_DRIFT f=%d %d->%d",
-							s_diag_frame_ctr, s_diag_last_spr_id, cur_id);
-						MNET_LOG_INFO(dbg);
-						s_diag_last_spr_id = cur_id;
+
+					/* DIAG_SYNC — per-pid receive counters and freshness for
+					 * each non-local remote player. Drives sync fine-tuning:
+					 *   rx_i  = total INPUT_RELAY frames received this race
+					 *   rx_s  = total PLAYER_SYNC frames received this race
+					 *   age   = local frames since the last PLAYER_SYNC for pid
+					 *   x,z   = last server-asserted position
+					 * One log line per remote pid; silently skipped for empty
+					 * slots. Fires on the same 60-frame cadence as DIAG_P1 HB
+					 * so the two streams interleave 1:1 in the server log. */
+					{
+						int pid;
+						for (pid = 0; pid < MNET_MAX_PLAYERS; pid++) {
+							if (pid == (int)my_id) continue;
+							if (pid == (int)g_mnet.my_player_id_2) continue;
+							if (g_mnet.diag_rx_input_relay[pid] == 0 &&
+							    g_mnet.diag_rx_player_sync[pid] == 0) continue;
+							sprintf(dbg,
+								"DIAG_SYNC pid=%d rx_i=%u rx_s=%u age=%d x=%d z=%d",
+								pid,
+								(unsigned)g_mnet.diag_rx_input_relay[pid],
+								(unsigned)g_mnet.diag_rx_player_sync[pid],
+								(int)((uint16_t)g_mnet.local_frame -
+								      g_mnet.diag_last_sync_frame[pid]),
+								(int)g_mnet.diag_last_sync_x[pid],
+								(int)g_mnet.diag_last_sync_z[pid]);
+							MNET_LOG_INFO(dbg);
+						}
 					}
 				}
 			}
@@ -5829,7 +5686,7 @@ void			my_gamepad(void)
 		/* Pack local P1 input bits and ship them.
 		 *
 		 * 3D Control Pad (peripheral id 0x16) re-maps the buttons per user
-		 * spec: RT=gas, B=brake, A=unused. Analog stick X drives steering
+		 * spec: RT=gas, LT=brake, A=use-item. Analog stick X drives steering
 		 * with a ~32-unit deadzone (PerAnalog x is centered at 128). */
 		{
 			uint8_t bits = 0;
@@ -5845,14 +5702,15 @@ void			my_gamepad(void)
 					if (KEY_PRESS(0, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
 				}
 				if (KEY_PRESS(0, PER_DGT_TR)) bits |= MNET_INPUT_GAS;
-				if (KEY_PRESS(0, PER_DGT_TB)) bits |= MNET_INPUT_BRAKE;
+				if (KEY_PRESS(0, PER_DGT_TL)) bits |= MNET_INPUT_BRAKE;
+				if (KEY_PRESS(0, PER_DGT_TA)) bits |= MNET_INPUT_ACTION;
 			} else {
 				if (KEY_PRESS(0, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
 				if (KEY_PRESS(0, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
 				if (KEY_PRESS(0, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
 				if (KEY_PRESS(0, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+				if (KEY_PRESS(0, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
 			}
-			if (KEY_PRESS(0, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
 			if (KEY_PRESS(0, PER_DGT_ST)) bits |= MNET_INPUT_START;
 			if (KEY_PRESS(0, PER_DGT_TC)) bits |= MNET_INPUT_HORN;
 			mnet_send_input_state(g_mnet.local_frame + 1, bits);
@@ -5872,14 +5730,15 @@ void			my_gamepad(void)
 						if (KEY_PRESS(p2port, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
 					}
 					if (KEY_PRESS(p2port, PER_DGT_TR)) bits |= MNET_INPUT_GAS;
-					if (KEY_PRESS(p2port, PER_DGT_TB)) bits |= MNET_INPUT_BRAKE;
+					if (KEY_PRESS(p2port, PER_DGT_TL)) bits |= MNET_INPUT_BRAKE;
+					if (KEY_PRESS(p2port, PER_DGT_TA)) bits |= MNET_INPUT_ACTION;
 				} else {
 					if (KEY_PRESS(p2port, PER_DGT_KL)) bits |= MNET_INPUT_LEFT;
 					if (KEY_PRESS(p2port, PER_DGT_KR)) bits |= MNET_INPUT_RIGHT;
 					if (KEY_PRESS(p2port, PER_DGT_TB)) bits |= MNET_INPUT_GAS;
 					if (KEY_PRESS(p2port, PER_DGT_TA)) bits |= MNET_INPUT_BRAKE;
+					if (KEY_PRESS(p2port, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
 				}
-				if (KEY_PRESS(p2port, PER_DGT_TL)) bits |= MNET_INPUT_ACTION;
 				if (KEY_PRESS(p2port, PER_DGT_TC)) bits |= MNET_INPUT_HORN;
 				mnet_send_input_state_p2(g_mnet.local_frame + 1, bits);
 
@@ -6005,10 +5864,10 @@ void			my_gamepad(void)
 		
 		
 			/* Gas: standard pad = B button, 3D pad = R trigger.
-			 * Brake: standard pad = A button, 3D pad = B button. */
+			 * Brake: standard pad = A button, 3D pad = L trigger. */
 			bool gas_pressed   = is_3d_pad ? KEY_PRESS(players[p].gamepad,PER_DGT_TR)
 			                               : KEY_PRESS(players[p].gamepad,PER_DGT_TB);
-			bool brake_pressed = is_3d_pad ? KEY_PRESS(players[p].gamepad,PER_DGT_TB)
+			bool brake_pressed = is_3d_pad ? KEY_PRESS(players[p].gamepad,PER_DGT_TL)
 			                               : KEY_PRESS(players[p].gamepad,PER_DGT_TA);
 
 			if ((gas_pressed && players[p].enable_controls) || players[p].cpu_gas)
@@ -6096,9 +5955,10 @@ void			my_gamepad(void)
 			 
 			  
 			 ///action button (use powerup)
-			 // for rocket launcher, have option of 1 or 3 rockets to be used at will.
-			 // for boost - add physics setting defaults as constants and change acceleration and max speed to boost versions. set timer, then change back to defaults once timer runs out.
-			 if (KEY_DOWN(players[p].gamepad,PER_DGT_TL) || players[p].cpu_action)
+			 // standard pad = L button, 3D pad = A button.
+			 if ((is_3d_pad ? KEY_DOWN(players[p].gamepad,PER_DGT_TA)
+			                : KEY_DOWN(players[p].gamepad,PER_DGT_TL))
+			     || players[p].cpu_action)
 			{	
 				
 				
@@ -6404,8 +6264,6 @@ void                            draw_3d_planes(void)
 void                init_3d_planes(void)
 {
     jo_img_8bits    img;
-    int             sky_rc = 0, flr_rc = 0;
-    void           *sky_data = (void*)0, *flr_data = (void*)0;
 
     ///Added by XL2 : turns off the TV while we load data
     slTVOff();
@@ -6414,38 +6272,19 @@ void                init_3d_planes(void)
 	jo_set_tga_default_palette(&sky_pal);
 	// SKY
     img.data = JO_NULL;
-
-	sky_rc = (int)jo_tga_8bits_loader(&img, "BG", level_data[game.level].sky, 0);
-	sky_data = (void*)img.data;
-
+	jo_tga_8bits_loader(&img, "BG", level_data[game.level].sky, 0);
     jo_background_3d_plane_a_img(&img, sky_pal.id, true, true);
     jo_free_img(&img);
 
     //FLOOR
     img.data = JO_NULL;
-
 	jo_set_tga_default_palette(&floor_pal);
-
-	flr_rc = (int)jo_tga_8bits_loader(&img, "BG", level_data[game.level].floor, 0);
-	flr_data = (void*)img.data;
-
+	jo_tga_8bits_loader(&img, "BG", level_data[game.level].floor, 0);
     jo_background_3d_plane_b_img(&img, floor_pal.id, true, false);
     jo_free_img(&img);
 
    ///Added by XL2 : turns on the TV
 	slTVOn();
-
-    if (g_online_mode) {
-        char dbg[96];
-        sprintf(dbg, "DIAG_3DP sky_f=%s rc=%d data=%p flr_f=%s rc=%d data=%p",
-            level_data[game.level].sky, sky_rc, sky_data,
-            level_data[game.level].floor, flr_rc, flr_data);
-        MNET_LOG_INFO(dbg);
-        sprintf(dbg, "DIAG_3DP_MEM mem=%d%% spr=%d%% sid=%d",
-            0, 0,
-            jo_get_last_sprite_id());
-        MNET_LOG_INFO(dbg);
-    }
 }
 
 void            load_hud(void)

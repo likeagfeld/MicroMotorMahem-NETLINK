@@ -308,6 +308,13 @@ static void process_game_start(const uint8_t* payload, int len)
     memset(g_mnet.remote_input_head, 0, sizeof(g_mnet.remote_input_head));
     memset(g_mnet.remote_states, 0, sizeof(g_mnet.remote_states));
 
+    /* Reset sync diagnostic counters per race. */
+    memset(g_mnet.diag_rx_input_relay, 0, sizeof(g_mnet.diag_rx_input_relay));
+    memset(g_mnet.diag_rx_player_sync, 0, sizeof(g_mnet.diag_rx_player_sync));
+    memset(g_mnet.diag_last_sync_frame, 0, sizeof(g_mnet.diag_last_sync_frame));
+    memset(g_mnet.diag_last_sync_x, 0, sizeof(g_mnet.diag_last_sync_x));
+    memset(g_mnet.diag_last_sync_z, 0, sizeof(g_mnet.diag_last_sync_z));
+
     /* Reset powerup roll cache. Server will broadcast spawns. */
     for (i = 0; i < MNET_POWERUP_SLOTS; i++) {
         g_mnet.powerup_types[i] = 0xFF;
@@ -355,6 +362,7 @@ static void process_input_relay(const uint8_t* payload, int len)
     g_mnet.remote_inputs[pid][idx].player_id = pid;
     g_mnet.remote_inputs[pid][idx].valid = true;
     g_mnet.remote_input_head[pid]++;
+    g_mnet.diag_rx_input_relay[pid]++;
 }
 
 static void process_player_sync(const uint8_t* payload, int len)
@@ -385,6 +393,10 @@ static void process_player_sync(const uint8_t* payload, int len)
     rs->cur_wp = payload[14];
     rs->dist_wp = read_u16(&payload[15]);
     rs->last_sync_frame = (uint16_t)g_mnet.frame_count;
+    g_mnet.diag_rx_player_sync[pid]++;
+    g_mnet.diag_last_sync_frame[pid] = (uint16_t)g_mnet.local_frame;
+    g_mnet.diag_last_sync_x[pid] = rs->x;
+    g_mnet.diag_last_sync_z[pid] = rs->z;
 }
 
 static void process_powerup_spawn(const uint8_t* payload, int len)
