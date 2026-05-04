@@ -342,6 +342,26 @@ static void process_game_start(const uint8_t* payload, int len)
     memset(g_mnet.game_roster, 0, sizeof(g_mnet.game_roster));
     g_mnet.game_roster_count = 0;
 
+    /* 0.7.2 iter 3: read per-pid car roster appended to GAME_START. The
+     * previous design relied on subsequent PLAYER_JOIN messages for car_id
+     * but those got queued behind GAME_START in the modem buffer and
+     * weren't consumed until after PHASE_B already loaded car=0 for every
+     * pid (5/4 21:28 logs: DIAG_CARS showed (lobby) 0 0 0 0 even though
+     * both clients had picked non-zero cars). Now cars arrive atomically
+     * with GAME_START so PHASE_B sees the right values immediately.
+     * Must run AFTER the memset above so the stored values survive. */
+    if (len >= 10) {
+        int car_count = payload[9];
+        int j;
+        if (car_count > MNET_MAX_PLAYERS) car_count = MNET_MAX_PLAYERS;
+        for (j = 0; j < car_count && (10 + j) < len; j++) {
+            g_mnet.lobby_players[j].id = (uint8_t)j;   /* race pid */
+            g_mnet.lobby_players[j].active = true;
+            g_mnet.lobby_players[j].car_id = payload[10 + j];
+        }
+        if (car_count > g_mnet.lobby_count) g_mnet.lobby_count = car_count;
+    }
+
     mnet_log("RACE STARTING!");
     {
         char buf[MNET_CLIENT_LOG_SCRATCH];

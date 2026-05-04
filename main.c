@@ -1349,7 +1349,31 @@ void player_collision_handling(int p)
 
 	players[p].physics_speed_x = (players[p].physics_speed * players[p].physics_grip);
 	players[p].physics_speed_z =  players[p].physics_speed;
-	
+
+	/* 0.7.2 iter 3 — decay residual collision-impulse adjustments when
+	 * the player isn't driving (physics_speed == 0). Without this, the
+	 * physics_speed_x_adj / z_adj fields linger after a wall collision
+	 * (no other code zeroes them outside reset_to_last_checkpoint) and
+	 * keep advancing the player by tens of fxp units per frame. The 5/4
+	 * 21:29 log captured the symptom: DIAG_STUCK p=1 nodelta? dx=-47
+	 * dz=0 dy=8 adj=-4772,0 — the car was creeping -47 units per frame
+	 * with speed=0 and the strict-equality stuck detector kept seeing
+	 * non-zero motion (dx=-47), resetting the timer, letting the car
+	 * drift off-track. Multiplying by 0.5 each frame here decays adj to
+	 * sub-unit in ~7 frames (~233 ms at 30 fps), which preserves the
+	 * intentional "knock-back" feel right after a collision (visible
+	 * for ~5-10 frames) while preventing the indefinite creep. */
+	if (players[p].physics_speed == 0.0f) {
+		players[p].physics_speed_x_adj *= 0.5f;
+		players[p].physics_speed_z_adj *= 0.5f;
+		if (players[p].physics_speed_x_adj > -0.5f &&
+		    players[p].physics_speed_x_adj < 0.5f)
+			players[p].physics_speed_x_adj = 0.0f;
+		if (players[p].physics_speed_z_adj > -0.5f &&
+		    players[p].physics_speed_z_adj < 0.5f)
+			players[p].physics_speed_z_adj = 0.0f;
+	}
+
 	players[p].delta_x = players[p].physics_speed_x_adj + ((players[p].physics_speed_x*CosR + players[p].physics_speed_z*SinR)/32768);
 	players[p].delta_z = players[p].physics_speed_z_adj + ((players[p].physics_speed_z*CosR - players[p].physics_speed_x*SinR)/32768);
 	
@@ -5802,19 +5826,68 @@ void			my_gamepad(void)
 			}
 		}
 
-		/* PLAYER_SYNC consumer: snap non-local players to server snapshot. */
+		/* PLAYER_SYNC consumer: smoothly LERP non-local players toward
+		 * the latest server snapshot instead of instant-snapping. The
+		 * 0.7.2 iter-2 build did `players[op].x = rs->x;` directly,
+		 * which produced visible "stair step" teleports every ~100 ms
+		 * (server broadcast rate). Smoothness now: each frame, advance
+		 * by 25% of the remaining delta toward the target. With 60 fps
+		 * render and 10 Hz sync (= 6 frames between snaps) the lerp
+		 * converges to within a few units of the new target by the
+		 * time the next snap arrives. The discrete `1.0 / N` fractions
+		 * are integer-friendly via right-shift.
+		 *
+		 * Big-jump exception: if the delta exceeds 200 fxp units (e.g.,
+		 * remote player respawned via reset_to_last_checkpoint), snap
+		 * directly so the visible teleport happens in one frame instead
+		 * of being smeared over many — important for race-progression
+		 * UI clarity.
+		 *
+		 * Server-authoritative fields (lap/cp/wp/dist_wp) are still
+		 * snapped because they're discrete game-logic values; a lerp
+		 * on a lap counter would be nonsense. */
 		for (op = 0; op < game.players && op < MNET_MAX_PLAYERS; op++) {
 			uint8_t net_id;
 			const mnet_remote_state_t* rs;
+			int dx, dy, dz, dry;
+			int abs_dx, abs_dz;
 			if (s_is_local[op]) continue;
 			net_id = s_net_player_id[op];
 			if (net_id == MNET_INVALID_PLAYER_ID) continue;
 			rs = mnet_get_remote_state(net_id);
 			if (!rs) continue;
-			players[op].x = rs->x;
-			players[op].y = rs->y;
-			players[op].z = rs->z;
-			players[op].ry = rs->ry;
+
+			dx = (int)rs->x - (int)players[op].x;
+			dy = (int)rs->y - (int)players[op].y;
+			dz = (int)rs->z - (int)players[op].z;
+			dry = (int)rs->ry - (int)players[op].ry;
+			/* angle wrap into [-180, 180] so we lerp the short way around */
+			while (dry > 180)  dry -= 360;
+			while (dry < -180) dry += 360;
+			abs_dx = (dx < 0) ? -dx : dx;
+			abs_dz = (dz < 0) ? -dz : dz;
+
+			if (abs_dx > 200 || abs_dz > 200) {
+				/* big jump — snap (likely a respawn). */
+				players[op].x = rs->x;
+				players[op].y = rs->y;
+				players[op].z = rs->z;
+				players[op].ry = rs->ry;
+			} else {
+				/* small delta — lerp 25% per frame. dx>>2 with sign-
+				 * preserving truncation; if remaining delta is 1-3
+				 * fxp units, dx>>2 is 0 and we'd never converge, so
+				 * close the last gap with sign(dx). */
+				int sx = (dx > 0) ? 1 : ((dx < 0) ? -1 : 0);
+				int sz = (dz > 0) ? 1 : ((dz < 0) ? -1 : 0);
+				int sy = (dy > 0) ? 1 : ((dy < 0) ? -1 : 0);
+				int sry = (dry > 0) ? 1 : ((dry < 0) ? -1 : 0);
+				players[op].x += (Sint16)((dx >> 2) ? (dx >> 2) : sx);
+				players[op].y += (Sint16)((dy >> 2) ? (dy >> 2) : sy);
+				players[op].z += (Sint16)((dz >> 2) ? (dz >> 2) : sz);
+				players[op].ry += (Sint16)((dry >> 2) ? (dry >> 2) : sry);
+			}
+
 			players[op].physics_speed = (float)rs->speed / 256.0f;
 			players[op].laps = rs->lap;
 			players[op].current_checkpoint = rs->checkpoint;

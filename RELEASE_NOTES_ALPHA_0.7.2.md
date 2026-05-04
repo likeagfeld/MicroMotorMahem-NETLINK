@@ -1,6 +1,20 @@
 # MicroMotorMayhem NetLink — Online Multiplayer (Alpha 0.7.2)
 
-Mid-test diagnostic release, **second iteration of 0.7.2** with two more code-traced fixes from the 5/4 PT 20:32 session log. Per user direction the version stays at 0.7.2 and the tag/release moves forward in place each iteration until told to advance.
+Mid-test diagnostic release, **third iteration of 0.7.2**. Four more code-traced fixes from the 5/4 PT 21:28 multi-human session log (TOAST + FARKUS, race went 5+ laps before ending, jitter, random respawns). Per user direction the version stays at 0.7.2 and the tag/release moves forward in place each iteration until told to advance.
+
+## What's new in iter-3
+
+**1. Race-finish 21-second delay** — server's "Race finished!" fired at 21:30:21 but TOAST received RACE_FINISH at 21:30:42 and FARKUS at 21:31:06 (45 seconds later). Server kept hammering PLAYER_SYNC at 10 Hz × 3 pids during those seconds, queueing ahead of RACE_FINISH at the modem bottleneck. Both clients kept driving locally during the queue drain — that's why FARKUS reported "I was over 5 laps on my side". **Fix:** server's `_game_tick` now gates PLAYER_SYNC broadcast on `not self.sim.race_finished`. After race-end the queue drains immediately, RACE_FINISH arrives within ~50 ms.
+
+**2. "Random hopping back to other places while driving"** — `DIAG_STUCK p=1 nodelta? dx=-47 dz=0 dy=8 adj=-4772,0` in the 5/4 21:29 log. The car was creeping -47 fxp units per frame at speed=0 because `physics_speed_x_adj` lingered at -47.72 after a wall collision. Strict-equality stuck detector saw motion (`dx=-47`), reset its 64-frame timer, and the car slowly drifted off-track until eventually getting reset_to_last_checkpoint via the off-track path — visible as a "random teleport". **Fix:** when `physics_speed == 0.0f`, multiply `physics_speed_x_adj/z_adj` by 0.5 each frame and zero them when below ±0.5. Decays in ~7 frames (~233 ms at 30 fps). The intentional knock-back from a collision is still visible for ~5-10 frames before fading.
+
+**3. All players showing same car (`DIAG_CARS p0=0 p1=0 p2=0 p3=0`)** — both 5/4 sessions confirmed the symptom. Root cause traced: PLAYER_JOIN messages carrying `car_id` arrive AFTER PHASE_B's CD I/O blocks the network polling thread, so PHASE_B reads `lobby_players[p].car_id = 0` (from the GAME_START memset). **Fix:** GAME_START payload now appends `[car_count:1][car_id:1]×N` after `lap_count`. `process_game_start` populates `lobby_players[].car_id` directly from the GAME_START packet — atomic, available immediately for PHASE_B regardless of PLAYER_JOIN arrival timing.
+
+**4. Stair-step jitter on remote cars** — the 0.7.2 iter-2 client did `players[op].x = rs->x;` directly in the PLAYER_SYNC consumer, producing visible 100 ms teleports between snaps. **Fix:** smooth lerp toward the latest server snapshot at 25% per frame (with sign-corrected last-step convergence), with a "big jump > 200 fxp units" exception that snaps directly (for actual respawn teleports). At 60 fps render and 10 Hz sync, the lerp converges to within a few units of the new target by the time the next snap arrives — turning visible discrete jumps into continuous motion. Position lerps; lap/cp/wp/dist_wp continue to snap (discrete game state).
+
+## Iter-2 carried forward
+
+Mid-test diagnostic release, **second iteration of 0.7.2** with two more code-traced fixes from the 5/4 PT 20:32 session log.
 
 The 5/4 daytime session log on the server (FARKUS playing, single Saturn, local-coop P2 active) revealed two things this build addresses:
 

@@ -431,12 +431,30 @@ def build_lobby_state(players: list) -> bytes:
 
 
 def build_game_start(seed: int, my_player_id: int, opponent_count: int,
-                     track_id: int, lap_count: int) -> bytes:
-    """[seed:4 BE][my_player_id:1][opp_count:1][track_id:1][lap_count:1]"""
+                     track_id: int, lap_count: int,
+                     cars: list = None) -> bytes:
+    """[op:1][seed:4 BE][my_pid:1][opp:1][track:1][laps:1]
+       [car_count:1][car_id:1]×N    (0.7.2 iter 3 — atomic car roster)
+
+    The car-id list is appended directly so that clients have authoritative
+    per-pid car selections AT the moment process_game_start runs, before
+    PHASE_B's CD I/O blocks the network polling thread. The previous design
+    relied on subsequent PLAYER_JOIN messages to deliver car_id, but those
+    were getting queued behind GAME_START in the modem buffer and not
+    consumed until after PHASE_B already read lobby_players[].car_id (=0
+    from the GAME_START memset). Confirmed in 5/4 21:28 logs: DIAG_CARS
+    showed (lobby) 0 0 0 0 even though both clients had picked non-zero
+    cars before ready-up.
+    """
     payload = bytes([MNET_MSG_GAME_START])
     payload += struct.pack("!I", seed & 0xFFFFFFFF)
     payload += bytes([my_player_id & 0xFF, opponent_count & 0xFF,
                       track_id & 0xFF, lap_count & 0xFF])
+    if cars is None:
+        cars = []
+    cars = cars[:MAX_PLAYERS]  # cap at 4
+    payload += bytes([len(cars) & 0xFF])
+    payload += bytes(c & 0xFF for c in cars)
     return encode_frame(payload)
 
 
@@ -1884,11 +1902,26 @@ class MMMServer:
             self.sim.reset_player_for_race(bot)
             pid += 1
 
+        # Build per-pid car roster in the same pid-assignment order as
+        # the loop above (primaries, then per-host local-coop P2s, then
+        # bots). Sent inside GAME_START so clients have car ids atomically
+        # before PHASE_B reads lobby_players[].car_id.
+        cars_for_pids = []
+        for c in ready_clients:
+            cars_for_pids.append(c.car_id & 0xFF)
+        for c in ready_clients:
+            for i, _ln in enumerate(c.local_player_names):
+                lcar = c.local_player_cars[i] if i < len(c.local_player_cars) else 0
+                cars_for_pids.append(lcar & 0xFF)
+        for bot in self.bots:
+            cars_for_pids.append(bot.car_id & 0xFF)
+
         # Send GAME_START + LOCAL_PLAYER_ACK to each connection
         for c in ready_clients:
             opp = total - 1
             c.send_raw(build_game_start(seed, c.game_player_id, opp,
-                                        track_id, lap_count))
+                                        track_id, lap_count,
+                                        cars_for_pids))
             for lp_id in c.local_player_ids:
                 c.send_raw(build_local_player_ack(lp_id))
 
@@ -2071,7 +2104,16 @@ class MMMServer:
         # 19 wire bytes / 100ms = 760 B/s = 53% of 1440 B/s 14.4k modem
         # capacity, well below client MNET_RX_MAX_PER_POLL=48 budget at
         # 60fps Saturn poll rate.
-        if self.sim.players and self._tick_counter % 2 == 0:
+        # 0.7.2 iter 3: STOP broadcasting PLAYER_SYNC once race_finished is
+        # set. The 5/4 21:30 log captured a 21-SECOND delay between server
+        # firing "Race finished!" and clients receiving RACE_FINISH, because
+        # the sync broadcast kept hammering the modem queue at 10 Hz × N
+        # pids = 30+ msgs/sec, with RACE_FINISH stuck at the back of a fat
+        # FIFO. After race_finished there is no useful state for the client
+        # to consume from PLAYER_SYNC anyway (race is over), so the broadcast
+        # is pure waste that delays the actual race-end UI.
+        if (self.sim.players and self._tick_counter % 2 == 0
+                and not self.sim.race_finished):
             for target_pid in sorted(self.sim.players.keys()):
                 p = self.sim.players[target_pid]
                 if not p.has_authoritative_pose:
