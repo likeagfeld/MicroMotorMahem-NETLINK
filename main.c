@@ -2113,25 +2113,40 @@ void player_collision_handling(int p)
 					
 					}*/
 	//respawn stuck players
-	if(game.mode == GAMEMODE_1PLAYERRACE && p != 0 && players[p].laps > 0 && players[p].laps < MAX_LAPS)
+	/* Eligibility: mid-race only (laps > 0 to skip pre-cross-line spawn,
+	 * laps < MAX_LAPS to skip post-finish coast). In offline 1P, only
+	 * AI cars (p != 0) — the human was expected to manage their own
+	 * recovery via cliff-respawn paths. In NetLink mode, every LOCAL
+	 * human player on this Saturn (primary + optional co-op P2) gets
+	 * the same auto-unstick the offline AI does, because driving off
+	 * a cliff is not a reliable recovery path on every track. Remote
+	 * players (s_is_local[p] == false) are skipped — their position
+	 * is server-authoritative and gets snap-overridden by PLAYER_SYNC
+	 * each tick, so any local stuck-detect here would be moot. */
 	{
-			if(players[p].nextx == players[p].x && players[p].nexty == players[p].y && players[p].nextz == players[p].z)
-			{
-			//start timer	
-			players[p].stuck_timer ++;
-				
-			}else
-			{
-			//cancel timer
-			players[p].stuck_timer =0;
+		bool stuck_eligible = false;
+		if (players[p].laps > 0 && players[p].laps < MAX_LAPS) {
+			if (game.mode == GAMEMODE_1PLAYERRACE && p != 0) {
+				stuck_eligible = true;
+			} else if (game.mode == GAMEMODE_NETLINKRACE && s_is_local[p]) {
+				stuck_eligible = true;
 			}
-			
-			if(players[p].stuck_timer >= PLAYER_STUCK_TIMER)
-			{
+		}
+		if (stuck_eligible) {
+			if (players[p].nextx == players[p].x &&
+			    players[p].nexty == players[p].y &&
+			    players[p].nextz == players[p].z) {
+				players[p].stuck_timer++;
+			} else {
+				players[p].stuck_timer = 0;
+			}
+			if (players[p].stuck_timer >= PLAYER_STUCK_TIMER) {
+				players[p].stuck_timer = 0;
+				reset_to_last_checkpoint(p);
+			}
+		} else {
 			players[p].stuck_timer = 0;
-			reset_to_last_checkpoint(p);
-			}
-			
+		}
 	}
 	
 	

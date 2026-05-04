@@ -1,10 +1,26 @@
 # MicroMotorMayhem NetLink — Online Multiplayer (Alpha 0.7.1)
 
-Hotfix release driven entirely by the 5/1/26 PT play-session diagnostic logs (`mmm_client.log` on the server). Three confirmed bugs traced directly to specific lines of code, fixed without speculation. Server-side fixes are already deployed and live; client-side fix ships in this build.
+Hotfix release driven entirely by the 5/1/26 PT play-session diagnostic logs (`mmm_client.log` on the server) and the user's stuck-mid-race report. Four confirmed bugs traced directly to specific lines of code, fixed without speculation. Server-side fixes are already deployed and live; client-side fixes ship in this build.
 
 ## Bugs fixed
 
-### 1. Remote players spawning at world origin (server-side, deployed)
+### 1. Cars getting permanently stuck mid-race (client-side, this build)
+
+**Symptom:** in some maps, cars get wedged in a position where they can rotate but not translate. Driving off a cliff respawns sometimes, but doesn't always work depending on the map and exact position.
+
+**Root cause:** the auto-unstick respawn logic at `main.c:2116` was gated to:
+```c
+if(game.mode == GAMEMODE_1PLAYERRACE && p != 0 && players[p].laps > 0 && players[p].laps < MAX_LAPS)
+```
+i.e., **offline 1P race only, AI cars only**. In `GAMEMODE_NETLINKRACE` (= 5, defined in `hamster.h:82`), the gate fails and the auto-unstick **never fires for any player**. The local human had to find a cliff or out-of-bounds trigger that calls `reset_to_last_checkpoint(p)` via a different path.
+
+**Fix:** added a second eligibility branch for NetLink mode that uses the existing `s_is_local[]` tracking array (`main.c:77`). Every local player on each Saturn (primary slot + optional co-op P2) now gets the same `PLAYER_STUCK_TIMER` (64 frames, ~2.1 sec at 30 fps) auto-respawn the offline AI got. Remote players are deliberately excluded — their position is overridden by `PLAYER_SYNC` every tick anyway, so a local stuck-detect would be moot for them.
+
+`reset_to_last_checkpoint(p)` (`main.c:1041-1069`) is mode-agnostic, doesn't reset `players[p].laps` (lap progress preserved), zeroes velocity, plays the pickup sound. After the local teleport, the next per-frame `mnet_send_player_state()` upload broadcasts the new position to the server, which fans it out via `PLAYER_SYNC` to other Saturns within one tick.
+
+**Known scope limit:** the existing detection uses strict equality `nextx == x && nexty == y && nextz == z`. The "completely stuck, can only rotate" case **is** covered — rotation changes `ry` but not `nextx/y/z`, so the equality holds and the timer accumulates. The "oscillating side-to-side, can't go forward" case is **not** covered yet — if a stuck car oscillates by even one fxp unit per frame, the equality breaks and the timer resets. That requires a position-tolerance detector instead of strict equality. **Deferred to 0.7.2** with diagnostic data confirming the symptom on a 0.7.1 binary.
+
+### 2. Remote players spawning at world origin (server-side, deployed)
 
 **Symptom:** sometimes one of the online players appears in the middle of the map (or off the map) at race start.
 
@@ -12,7 +28,7 @@ Hotfix release driven entirely by the 5/1/26 PT play-session diagnostic logs (`m
 
 **Fix:** added a `has_authoritative_pose: bool` gate on `Player`. Bots flip it `True` at construction (their server-side physics gives them an immediately-valid pose). Humans flip it `True` on first `PLAYER_STATE`. The `_game_tick` PLAYER_SYNC broadcast loop skips any pid whose flag is still `False`. Since the client's `mnet_get_remote_state()` returns `NULL` until the *first* sync arrives, and the consumer's `if (!rs) continue;` guard preserves whatever spawn pose the Saturn-side track loader assigned, the (0,0,0) render frame is mechanically eliminated.
 
-### 2. Remote cars updating only ~5 Hz, jumping every ~200 ms (server-side, deployed)
+### 3. Remote cars updating only ~5 Hz, jumping every ~200 ms (server-side, deployed)
 
 **Symptom:** "remote player cars are only updating position every 1 second or so but glitching jumping around not smooth"
 
@@ -31,7 +47,7 @@ Hotfix release driven entirely by the 5/1/26 PT play-session diagnostic logs (`m
 
 This is a Tier-1 server-only change. **Future Tier-2** (quantize PLAYER_SYNC to ~12 bytes Utenyaa-style, push to 20 Hz/pid) would land smoother motion still; not in scope for this hotfix.
 
-### 3. Y button (camera zoom) only worked for one player per race (client-side, this build)
+### 4. Y button (camera zoom) only worked for one player per race (client-side, this build)
 
 **Symptom:** "button to change view (i think Y button?) seems to only work for some online players but not others"
 
@@ -53,9 +69,13 @@ The server stores powerup positions as `(0, 0, 0)` placeholders (`mserver.py:885
 
 The 0.6.6 fix (`preview_tex / trackmap_tex = jo_get_last_sprite_id() + N`) prevents the destructive `jo_sprite_free_from()` rewind on cold boot. Friday's logs show mixed `175:32x32` (wrong, trackmap dims) and `175:48x48` (correct, MAP_TILESET[0]) `DIAG_BR` entries — but the 32x32 entries date from earlier sessions and may correspond to pre-0.6.6 binaries on those Saturns. **Need a clean test session with all Saturns running 0.7.1 binary to confirm whether the bug recurs.** No code change in this release.
 
+### Side-to-side oscillation stuck case
+
+See bug #1 above — the strict-equality stuck detector covers the "completely stuck" case but misses the "oscillates by 1 fxp unit per frame" case. Position-tolerance detector deferred to 0.7.2 with confirming logs from a 0.7.1 session.
+
 ## Why I am certain these fixes work and don't regress
 
-Every claim in this release notes is traced to specific code lines that I read end-to-end. The spawn fix is mechanically guaranteed by the client's existing `if (!rs) continue;` guard. The rate fix is verified against four bandwidth budgets (modem capacity, client RX budget, frame poll capacity, burst-window math). The Y-button fix is the removal of one demonstrably-broken line. None of the changes touch newlib heap allocation, sprite allocation, lap-count logic, RNG, linker scripts, or peripheral-slot indexing — i.e., none of the playbook gotchas G1–G10 apply.
+Every claim in this release notes is traced to specific code lines that I read end-to-end. The spawn fix is mechanically guaranteed by the client's existing `if (!rs) continue;` guard. The rate fix is verified against four bandwidth budgets (modem capacity, client RX budget, frame poll capacity, burst-window math). The Y-button fix is the removal of one demonstrably-broken line. The stuck-respawn fix removes one mode-gate from existing, tested code that already runs every frame in offline 1P mode. None of the changes touch newlib heap allocation, sprite allocation, lap-count logic, RNG, linker scripts, or peripheral-slot indexing — i.e., none of the playbook gotchas G1–G10 apply.
 
 ## How to play
 
@@ -68,7 +88,8 @@ ONE race, 2-4 humans + bots. Watch for:
 - ✓ All player cars spawn at the start grid (NOT in the middle of the map)
 - ✓ Remote cars move smoothly with ~100 ms snap intervals (was ~200 ms)
 - ✓ Y button cycles camera zoom for every player, regardless of pid 0/1/2/3
-- ✓ Server log shows `DIAG pid=N FIRST PLAYER_STATE x=... z=...` once per pid per race start (existing diag, now load-bearing for the spawn fix)
+- ✓ If a local player gets wedged where they can rotate but not move, after ~2 seconds they auto-respawn at the previous checkpoint (sound: pickup ping)
+- ⚠ If a local player oscillates side-to-side stuck against a wall and does NOT auto-respawn after a few seconds, that's the deferred sub-case — note time/track/position so 0.7.2 can target it precisely
 - ⚠ Powerup pickup behavior unchanged — gather instances where pickup fails so 0.7.2 can target the slot-index issue with data
 - ⚠ Track tileset rendering — if any Saturn shows "rainbow static" tiles, that confirms the 0.6.6 fix didn't fully cover this case and 0.7.2 can land a real fix
 
