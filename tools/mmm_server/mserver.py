@@ -585,6 +585,13 @@ class Player:
         # (lap or checkpoint advance). Used by GameSimulation.tick_stall
         # to mark a no-progress player as DNF after a timeout.
         self.last_progress_time = 0.0
+        # Authoritative-pose gate: humans start False, flip True on their
+        # first PLAYER_STATE arrival. Until then, GameSimulation skips
+        # broadcasting PLAYER_SYNC for this pid so peers don't snap to
+        # (0,0,0) on the first ~50-200 ms of the race. Bots flip this
+        # True at construction (their step_physics gives them an
+        # immediately-valid pose).
+        self.has_authoritative_pose = False
 
 
 # BotPlayer ports MicroMotorMayhem's cpu_control() AI from main.c:5159-5350 verbatim:
@@ -668,6 +675,11 @@ class BotPlayer(Player):
         self.frame = 0
         self.last_relay_bits = 0xFF  # force first relay
         self.relay_force_counter = 0
+        # Bots are authoritative immediately — step_physics drives their
+        # pose every tick, no client roundtrip. Without this, the
+        # has_authoritative_pose gate in GameSimulation._game_tick would
+        # silently drop bot syncs and bots would render as invisible.
+        self.has_authoritative_pose = True
         # Mirrors cpu_pressed_action in players[] — edge-trigger guard so
         # MNET_INPUT_ACTION fires once per powerup pickup, not every tick.
         self.cpu_pressed_action = False
@@ -903,6 +915,12 @@ class GameSimulation:
         p.finished = False
         p.finish_time = 0.0
         p.last_progress_time = time.time()
+        # Re-arm the authoritative-pose gate per race. Bots remain
+        # authoritative (their step_physics yields a valid pose every
+        # tick); humans must re-establish authority by sending the
+        # first PLAYER_STATE of the race so peers don't snap to a
+        # stale (0,0,0) until that arrives.
+        p.has_authoritative_pose = p.is_bot
         # Diagnostic counters — see handle_player_state. Reset per race
         # so the FIRST_STATE log fires once at race start, every restart.
         p._diag_logged_first = False
@@ -916,6 +934,13 @@ class GameSimulation:
         p = self.players.get(pid)
         if not p:
             return
+        # First PLAYER_STATE establishes this human as authoritative —
+        # gate flips True so GameSimulation._game_tick begins broadcasting
+        # PLAYER_SYNC for this pid. Until now peers saw NULL remote_state,
+        # meaning their local main.c sync consumer skipped the snap and
+        # held their offline-init spawn pose (avoiding the (0,0,0) origin
+        # render bug observed in 5/1/26 PT logs).
+        p.has_authoritative_pose = True
         # Diagnostic: log first PLAYER_STATE per pid in each race, plus
         # every state where lap or cp differs from previous. Lets us see
         # exactly what the client is sending so we can stop guessing.
@@ -2020,20 +2045,28 @@ class MMMServer:
         if self._tick_counter % 5 == 0:
             self.sim.recompute_positions()
 
-        # Round-robin PLAYER_SYNC: one slot per tick (at 20Hz, each player
-        # gets a sync every players-count ticks; with 4 players => 5Hz).
-        if self.sim.players:
-            pids = sorted(self.sim.players.keys())
-            slot = self.sim._sync_round_robin % len(pids)
-            self.sim._sync_round_robin += 1
-            target_pid = pids[slot]
-            p = self.sim.players[target_pid]
-            sync_msg = build_player_sync(p.player_id, p.x, p.y, p.z,
-                                         p.ry, p.speed,
-                                         p.lap, p.current_checkpoint,
-                                         p.current_waypoint,
-                                         p.dist_to_next_waypoint)
-            self._broadcast_to_game(sync_msg)
+        # PLAYER_SYNC broadcast: every 2 ticks (20Hz/2 = 10Hz), broadcast
+        # ALL pids that have established an authoritative pose.
+        #
+        # Old design was round-robin one pid per tick = 5Hz/pid at 4P,
+        # producing visible 200ms teleports between snaps on the snap-only
+        # client. New design halves the gap to 100ms (10Hz/pid) and skips
+        # pids whose first PLAYER_STATE hasn't arrived yet (avoiding the
+        # (0,0,0) spawn-render bug). Bandwidth budget verified: 4 pids ×
+        # 19 wire bytes / 100ms = 760 B/s = 53% of 1440 B/s 14.4k modem
+        # capacity, well below client MNET_RX_MAX_PER_POLL=48 budget at
+        # 60fps Saturn poll rate.
+        if self.sim.players and self._tick_counter % 2 == 0:
+            for target_pid in sorted(self.sim.players.keys()):
+                p = self.sim.players[target_pid]
+                if not p.has_authoritative_pose:
+                    continue  # peer hasn't sent first PLAYER_STATE yet
+                sync_msg = build_player_sync(p.player_id, p.x, p.y, p.z,
+                                             p.ry, p.speed,
+                                             p.lap, p.current_checkpoint,
+                                             p.current_waypoint,
+                                             p.dist_to_next_waypoint)
+                self._broadcast_to_game(sync_msg)
 
         # Race finish detection
         # Stall / max-duration check before finish detection so DNF'd

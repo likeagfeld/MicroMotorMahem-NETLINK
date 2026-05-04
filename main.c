@@ -5997,7 +5997,7 @@ void			my_gamepad(void)
 		}
 		
 		if (KEY_DOWN(players[p].gamepad,PER_DGT_TY))
-		 {	
+		 {
 			if(players[p].cam_zoom_num == 3)
 			{
 			players[p].cam_zoom_num = 0;
@@ -6005,7 +6005,13 @@ void			my_gamepad(void)
 			{
 			 players[p].cam_zoom_num ++;
 			}
-		players[target_player].cam_zoom_num = players[0].cam_zoom_num;
+			/* Removed cross-slot copy: previously
+			 *   players[target_player].cam_zoom_num = players[0].cam_zoom_num;
+			 * which silently reverted any non-pid-0 player's Y press to
+			 * pid 0's zoom level — making Y appear broken for every
+			 * online player except the one who happened to be pid 0 in
+			 * the race. Each player now controls their own camera zoom
+			 * independently (same behavior in offline 2P splitscreen). */
 		 }
 		 
 		 
