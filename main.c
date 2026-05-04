@@ -268,9 +268,26 @@ void mmm_online_start_race(void)
     game.select_level = track;
     game.mode = GAMEMODE_NETLINKRACE;
 
-    /* How many slots are racing? Lobby roster count if known, else our id + 1. */
-    total = g_mnet.lobby_count;
-    if (total < 1) total = (g_mnet.opponent_count + 1);
+    /* How many slots are racing? Use opponent_count from the GAME_START
+     * payload itself — it's delivered atomically and is set before the
+     * game_start_pending flag flips, so it's authoritative regardless of
+     * how many subsequent PLAYER_JOIN messages have arrived in the RX
+     * buffer when this function fires.
+     *
+     * Previous logic (`total = g_mnet.lobby_count`) raced with PLAYER_JOIN
+     * arrival timing: when mmm_online_start_race ran on the same lobby
+     * tick that processed GAME_START, only the PLAYER_JOINs already in
+     * that tick's RX poll had bumped lobby_count. Result on 5/4 PT
+     * session: lobby_count=1 even though 1 host + 1 local-coop P2 were
+     * in the race, so game.players=1, create_player() iterated only
+     * p=0, players[1] (P2) was left uninitialized — and the render path
+     * (which uses `current_players` for splitscreen) read garbage from
+     * players[1].car_selection / physics / position fields. That is the
+     * "P2 splitscreen background and sprites not rendering" bug, and is
+     * also a plausible cause of the freeze the user reported when a
+     * later code path iterating up to current_players touched the
+     * uninitialized struct. */
+    total = g_mnet.opponent_count + 1;
     if (total < 1) total = 1;
     if (total > 4) total = 4;
     game.players = total;
@@ -1536,23 +1553,28 @@ void player_collision_handling(int p)
 						{
 							int next_checkpoint;
 
-							/* DIAG_TRIG — log every checkpoint trigger event for
-							 * local pids. Captures the inputs to the lap/cp
-							 * logic so we can diagnose the 0.7.1-reported
-							 * "P2 lap counter never increments" bug from one
-							 * test session. Format: pid, trigger, current_cp,
-							 * next_cp, position. The action this trigger
-							 * takes (lap+, cp_advance, reset_to_cp) is logged
-							 * separately at each branch below. */
+							/* DIAG_TRIG — dedupe: only log on EDGE (when this
+							 * trigger first becomes relevant for this pid).
+							 * Track per-pid last-trigger-id; only emit when
+							 * trigger differs. The trigger zone is a bbox so
+							 * has_trigger_collision fires every frame the
+							 * player overlaps it (~10-15 frames per cross).
+							 * Without this dedupe the client_log token bucket
+							 * depletes and downstream legitimate logs (LAP+,
+							 * RESET) get dropped. */
 							if (g_online_mode && p < 4 && s_is_local[p]) {
-								char dbg[80];
-								sprintf(dbg, "DIAG_TRIG p=%d tr=%d cp=%d nx=%d x=%d z=%d",
-									p, (int)trigger,
-									(int)players[p].current_checkpoint,
-									(int)((players[p].current_checkpoint == 4) ? 1 :
-									      players[p].current_checkpoint + 1),
-									(int)players[p].x, (int)players[p].z);
-								MNET_LOG_INFO(dbg);
+								static uint8_t s_last_trig[4] = {0xFF, 0xFF, 0xFF, 0xFF};
+								if (s_last_trig[p] != trigger) {
+									char dbg[80];
+									sprintf(dbg, "DIAG_TRIG p=%d tr=%d cp=%d nx=%d x=%d z=%d",
+										p, (int)trigger,
+										(int)players[p].current_checkpoint,
+										(int)((players[p].current_checkpoint == 4) ? 1 :
+										      players[p].current_checkpoint + 1),
+										(int)players[p].x, (int)players[p].z);
+									MNET_LOG_INFO(dbg);
+									s_last_trig[p] = trigger;
+								}
 							}
 
 							if(players[p].current_checkpoint == 4)
@@ -1667,12 +1689,19 @@ void player_collision_handling(int p)
 							pcm_play(cpoint_sound, PCM_PROTECTED, 6);
 							}
 
-						players[p].current_checkpoint = trigger - 9;
-						/* DIAG: cp advance for local pid. */
-						if (g_online_mode && p < 4 && s_is_local[p]) {
-							char dbg[64];
-							sprintf(dbg, "DIAG_TRIG p=%d ADV cp=%d", p, (int)players[p].current_checkpoint);
-							MNET_LOG_INFO(dbg);
+						{
+							int prev_cp = (int)players[p].current_checkpoint;
+							players[p].current_checkpoint = trigger - 9;
+							/* DIAG: log only on actual cp change, not every
+							 * frame in trigger zone (cp gets re-set to same
+							 * value every overlap frame). */
+							if (g_online_mode && p < 4 && s_is_local[p] &&
+							    prev_cp != (int)players[p].current_checkpoint) {
+								char dbg[64];
+								sprintf(dbg, "DIAG_TRIG p=%d ADV cp=%d->%d",
+									p, prev_cp, (int)players[p].current_checkpoint);
+								MNET_LOG_INFO(dbg);
+							}
 						}
 
 						//find players correct rotation based on next waypoint for respawn
@@ -6090,35 +6119,59 @@ void			my_gamepad(void)
 			 if ((is_3d_pad ? KEY_DOWN(players[p].gamepad,PER_DGT_TA)
 			                : KEY_DOWN(players[p].gamepad,PER_DGT_TL))
 			     || players[p].cpu_action)
-			{	
-				
-				
+			{
+				/* DIAG_PUP — log every powerup activation event for local
+				 * pids so we can correlate freezes / desyncs with the exact
+				 * powerup type and frame. User reported the 5/4 PT freeze
+				 * happened "after activating a powerup" and the 0.7.2 build
+				 * had no powerup-side logs. ENTER fires on the action-button
+				 * frame only (edge guarded by KEY_DOWN). */
+				if (g_online_mode && p < 4 && s_is_local[p]) {
+					char dbg[80];
+					sprintf(dbg, "DIAG_PUP p=%d ENTER pup=%d active=%d shoot=%d x=%d z=%d",
+						p, (int)players[p].current_powerup,
+						players[p].powerup_active ? 1 : 0,
+						players[p].shoot ? 1 : 0,
+						(int)players[p].x, (int)players[p].z);
+					MNET_LOG_INFO(dbg);
+				}
+
 				switch(players[p].current_powerup)
 				{
-				
+
 				case 1: players[p].powerup_active = true;
 						break;
-						
+
 				case 2: if(!players[p].projectile_alive)
 						{
 						players[p].shoot = true;
 						}
 						players[p].powerup_active = true;
 						break;
-						
+
 				case 3:	//if(!players[p].projectile_alive)
 						//{
 						players[p].shoot = true;
 						//}
 						players[p].powerup_active = true;
 						break;
-						
+
 				case 6:	//jump
 						players[p].powerup_active = true;
 						player_bounce(p);
-						
+
 						break;
-					
+
+				}
+				/* DIAG_PUP EXIT — confirms we returned from the activation
+				 * path successfully. If freeze is INSIDE a case body (e.g.,
+				 * player_bounce hangs), ENTER will appear in the log but
+				 * EXIT won't — pinpoints which case. */
+				if (g_online_mode && p < 4 && s_is_local[p]) {
+					char dbg[64];
+					sprintf(dbg, "DIAG_PUP p=%d EXIT pup=%d", p,
+						(int)players[p].current_powerup);
+					MNET_LOG_INFO(dbg);
 				}
 			}else
 			{

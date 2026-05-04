@@ -1,6 +1,6 @@
 # MicroMotorMayhem NetLink — Online Multiplayer (Alpha 0.7.2)
 
-Mid-test diagnostic release. ONE confirmed fix (the car-selection bug, 100% confidence) plus comprehensive instrumentation so the next test session captures everything needed to fix the remaining bugs in 0.7.3 with the same code-traced certainty.
+Mid-test diagnostic release, **second iteration of 0.7.2** with two more code-traced fixes from the 5/4 PT 20:32 session log. Per user direction the version stays at 0.7.2 and the tag/release moves forward in place each iteration until told to advance.
 
 The 5/4 daytime session log on the server (FARKUS playing, single Saturn, local-coop P2 active) revealed two things this build addresses:
 
@@ -9,7 +9,21 @@ The 5/4 daytime session log on the server (FARKUS playing, single Saturn, local-
 
 Both are now instrumented.
 
-## Bug fixed (100% confidence)
+## Bugs fixed (100% confidence — each one code-traced)
+
+### P2 splitscreen rendering broken / probable freeze cause
+
+**Symptom (from 5/4 20:32 session log):** P2's splitscreen view fails to render the level background and sprites correctly; game froze ~halfway through a lap.
+
+**Root cause traced:**
+- `mmm_online_start_race` (`main.c:272`) was computing `total = g_mnet.lobby_count` to set `game.players`. After `process_game_start` (`mmm_net.c:326`) wipes `lobby_count = 0`, it grows ONLY as PLAYER_JOIN messages arrive.
+- `mmm_online_start_race` runs on the same lobby tick that processed GAME_START — so `lobby_count` reflects only the PLAYER_JOIN frames that landed in that tick's RX buffer at that exact moment.
+- Smoking gun in the log: `START_RACE BEGIN t=11 s=2 p=1 p2=1` — `s=2` (current_players, used for splitscreen render = 2 because P2 active) but **`p=1`** (`game.players=1`).
+- `create_player()` iterates `for(p < game.players)`. With `game.players=1`, only `players[0]` was initialized. `players[1]` (P2) had uninitialized `car_selection`, physics fields, position, sprite IDs.
+- The render loop iterates up to `current_players=2` for splitscreen, reading garbage from `players[1]` — exactly the symptom of "P2 splitscreen background and sprites not rendering".
+- Any later code path iterating up to `current_players` and dereferencing fields on the uninitialized struct can hang the per-frame loop = plausible cause of the freeze (last log entry was a healthy `DIAG_P1 HB f=1500`, then 60+ seconds of silence until heartbeat timeout).
+
+**Fix:** `total = g_mnet.opponent_count + 1`. `opponent_count` is delivered atomically inside the GAME_START payload itself (`mmm_net.c:278`), set BEFORE `game_start_pending` flips, so it's deterministic regardless of PLAYER_JOIN arrival timing. With this, `game.players` always equals the real roster size at race start, every player slot gets `create_player`'d, and the uninitialized-struct read paths are eliminated.
 
 ### All players rendering as the same car
 
@@ -39,10 +53,24 @@ Mirror of the existing `DIAG_P1 HB`, fires every 60 frames for the local-coop P2
 
 Logs every checkpoint trigger event for local pids (P1 and P2) with three sub-events:
 - `DIAG_TRIG p=N LAP+ -> N` — successful lap-line crossing, lap incremented
-- `DIAG_TRIG p=N ADV cp=N` — checkpoint advance (in-sequence)
+- `DIAG_TRIG p=N ADV cp=N->N` — checkpoint advance (in-sequence), only logged when `current_checkpoint` actually changes
 - `DIAG_TRIG p=N RESET tr=N cp=N nx=N (out-of-seq)` — out-of-sequence trigger hit, `reset_to_last_checkpoint(p)` fired (this is the teleport mechanism the user reported for P2)
 
+**0.7.2 second iteration — deduped.** First iteration emitted the entry-line every frame the player overlapped a trigger bbox (~10-15 frames per cross), depleting the client_log token bucket and dropping legitimate downstream logs. Now per-pid `s_last_trig[]` tracks the last trigger seen; only emits on edge transition. ADV is gated on actual cp change. RESET is naturally edge-driven. Net: ~1-2 trigger lines per real cross instead of 12.
+
 If P2's trigger events show `RESET` repeatedly while P1's show `ADV`/`LAP+`, that pinpoints the bug exactly: P2's checkpoint progression isn't tracking the same sequence P1's is, so every checkpoint cross is treated as out-of-order and reset is triggered.
+
+### `DIAG_PUP p=N ENTER pup=N active=N shoot=N x=N z=N` + `DIAG_PUP p=N EXIT pup=N`
+
+Logs every powerup-activation event for local pids — bracketed ENTER/EXIT lets us pinpoint a freeze that occurs INSIDE a switch-case body (ENTER appears in log, EXIT does not = which case hung). User reported the 5/4 freeze happened "after activating a powerup" but the prior build had zero powerup-side logs. This makes the freeze cause provable from one more session.
+
+### `DIAG_CAR send pid=N car=N` + `DIAG_CAR lobby slot=N pid=N car=N->N`
+
+Two-mode car-selection trace:
+- `send` fires every time the local Saturn ships a `MNET_MSG_CAR_SELECT` — captures the picked-on-this-Saturn value with the matching pid.
+- `lobby` fires every time `process_lobby_state` sees a slot's `car_id` change — captures what the SERVER thinks each slot has selected, after the lobby roundtrip.
+
+End-to-end trace: `DIAG_CAR send car=N` → server processes → `DIAG_CAR lobby slot=K car=...->N` → race start → `DIAG_CARS pK=N (sel) N (lobby)`. All three should match. If `send` says N but `lobby` shows N→M with M≠N, the server is mutating the value. If `lobby` shows N but `DIAG_CARS` shows the resolved car as different, the lobby_players[] → players[].car_selection mapping in PHASE_B has a bug. Pinpoints which leg is broken.
 
 ### `DIAG_STUCK p=N nodelta? dx=N dz=N dy=N adj=N,N` + `DIAG_STUCK p=N FIRED -> respawn`
 

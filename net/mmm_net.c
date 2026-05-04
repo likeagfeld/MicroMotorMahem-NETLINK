@@ -245,6 +245,7 @@ static void process_lobby_state(const uint8_t* payload, int len)
 
     off = 2;
     for (i = 0; i < g_mnet.lobby_count && off < len; i++) {
+        uint8_t prev_car;
         if (off >= len) break;
         g_mnet.lobby_players[i].id = payload[off++];
 
@@ -254,11 +255,25 @@ static void process_lobby_state(const uint8_t* payload, int len)
         if (consumed < 0) break;
         off += consumed;
 
+        prev_car = g_mnet.lobby_players[i].car_id;
         if (off < len) g_mnet.lobby_players[i].car_id = payload[off++];
         if (off < len) g_mnet.lobby_players[i].ready = (payload[off++] != 0);
         if (off < len) g_mnet.lobby_players[i].is_local = (payload[off++] != 0);
 
         g_mnet.lobby_players[i].active = true;
+
+        /* DIAG_CAR — log when LOBBY_STATE updates a player's car_id. Lets
+         * the next test session prove what the SERVER thinks each lobby
+         * slot has chosen, so we can compare against the picked-on-this-
+         * Saturn value (DIAG_CAR send) and the in-race resolved value
+         * (DIAG_CARS at race start). All three must match end-to-end. */
+        if (prev_car != g_mnet.lobby_players[i].car_id) {
+            char buf[64];
+            sprintf(buf, "DIAG_CAR lobby slot=%d pid=%d car=%d->%d",
+                    i, (int)g_mnet.lobby_players[i].id,
+                    (int)prev_car, (int)g_mnet.lobby_players[i].car_id);
+            MNET_LOG_INFO(buf);
+        }
     }
 
     for (; i < MNET_MAX_PLAYERS; i++) g_mnet.lobby_players[i].active = false;
@@ -861,6 +876,18 @@ void mnet_send_car_select(uint8_t car_id)
     if (g_mnet.state != MNET_STATE_LOBBY || !g_mnet.transport) return;
     len = mnet_encode_car_select(g_mnet.tx_buf, car_id);
     net_transport_send(g_mnet.transport, g_mnet.tx_buf, len);
+    /* DIAG_CAR — log every CAR_SELECT outbound so we can correlate
+     * "what the player picked in the lobby" against
+     * "what DIAG_CARS at race start says the per-pid car_id ended up being".
+     * If picked=N but DIAG_CARS shows pN=M (M != N), the lobby roundtrip
+     * is dropping the value somewhere; if they match, the wire format is
+     * fine and any visible mismatch is a render-side mapping bug. */
+    {
+        char buf[40];
+        sprintf(buf, "DIAG_CAR send pid=%d car=%d",
+                (int)g_mnet.my_player_id, (int)car_id);
+        MNET_LOG_INFO(buf);
+    }
 }
 
 void mnet_send_add_local_player(const char* name)
