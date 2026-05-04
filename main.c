@@ -1919,19 +1919,36 @@ void player_collision_handling(int p)
 						{
 							collide = has_horizontal_collision(collpoints_type, collpoints_x, collpoints_y, collpoints_z, collpoints_xsize, collpoints_ysize, collpoints_zsize,players[p].nextx,players[p].y,players[p].z,players[p].xsize,players[p].ysize,players[p].zsize);
 							if(collide != NO_RAMP_COLLISION)
-							{			
+							{
 								if(collide < 21 && players[p].physics_speed_y <= 0)
 								{
 								player_jump(p);
 								}else
 								{
 								players[p].physics_speed_x_adj -=players[p].delta_x*1.5;
+								/* 0.7.2 iter 3 — clamp adj_x to ±30 fxp units
+								 * to prevent the runaway accumulation that
+								 * causes the "while driving keep hopping
+								 * back" symptom. Without this clamp, holding
+								 * gas into a wall every frame adds delta_x *
+								 * 1.5 (~18 fxp) to adj_x, which combined
+								 * with friction's 0.8/frame decay yields
+								 * net +17/frame → adj reaches -47, -65,
+								 * etc. — eventually the off-track / stuck
+								 * timer fires and the car teleports back
+								 * to the previous checkpoint. The 5/4
+								 * 21:29 log captured adj=-4772 (= -47.72
+								 * fxp). Knock-back feel preserved at ±30. */
+								if (players[p].physics_speed_x_adj < -30.0f)
+									players[p].physics_speed_x_adj = -30.0f;
+								else if (players[p].physics_speed_x_adj > 30.0f)
+									players[p].physics_speed_x_adj = 30.0f;
 								players[p].physics_speed = 0.0f;//JJ physics change 28/01/2025
 								players[p].nextx = players[p].x;
 								pcm_play(crash_sound, PCM_PROTECTED, players[p].volume);
 								xcollide = true;
-								}			
-								
+								}
+
 							}
 						}			
 					
@@ -1941,22 +1958,29 @@ void player_collision_handling(int p)
 						{
 							collide = has_horizontal_collision(collpoints_type, collpoints_x, collpoints_y, collpoints_z, collpoints_xsize, collpoints_ysize, collpoints_zsize,players[p].x,players[p].y,players[p].nextz,players[p].xsize,players[p].ysize,players[p].zsize);
 							if(collide != NO_RAMP_COLLISION)
-							{ 
-							
+							{
+
 							if(collide < 21 && players[p].physics_speed_y <= 0)
 								{
 								player_jump(p);
 								}else
 								{
 								players[p].physics_speed_z_adj -=players[p].delta_z*1.5;
+								/* 0.7.2 iter 3 — same ±30 fxp cap on adj_z
+								 * as adj_x above. Prevents runaway when
+								 * holding gas against a wall on the Z axis. */
+								if (players[p].physics_speed_z_adj < -30.0f)
+									players[p].physics_speed_z_adj = -30.0f;
+								else if (players[p].physics_speed_z_adj > 30.0f)
+									players[p].physics_speed_z_adj = 30.0f;
 								players[p].physics_speed = 0.0f;//JJ physics change 28/01/2025
 								players[p].nextz = players[p].z;
 								pcm_play(crash_sound, PCM_PROTECTED, players[p].volume);
 								zcollide = true;
-								}				
-								
+								}
+
 							}
-						
+
 						}		
 					}// end 
 				}
