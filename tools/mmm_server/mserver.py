@@ -448,9 +448,19 @@ def build_input_relay(player_id: int, frame_num: int, input_bits: int) -> bytes:
     return encode_frame(payload)
 
 
-def build_player_join(player_id: int, name: str) -> bytes:
+def build_player_join(player_id: int, name: str, car_id: int = 0) -> bytes:
+    """[op:1][pid:1][name_lp:1+N][car_id:1]
+    car_id appended in 0.7.2 (was missing — caused all online players to render
+    as the same car because client wipes lobby_players on GAME_START and
+    PLAYER_JOIN was the only re-population path. process_player_join client
+    decoder treats trailing byte as car_id; older clients stop reading after
+    the name string so they remain backward-compatible (will continue to use
+    whatever stale car_id was in place, which means car=0/all-same — the
+    pre-0.7.2 behavior, no regression). All 0.7.2+ clients get correct cars.
+    """
     payload = bytes([MNET_MSG_PLAYER_JOIN, player_id & 0xFF])
     payload += encode_lp_string(name)
+    payload += bytes([car_id & 0xFF])
     return encode_frame(payload)
 
 
@@ -1705,7 +1715,8 @@ class MMMServer:
         self._send_leaderboard_to_client(client)
         for s, c in self.clients.items():
             if s != sock and c.authenticated:
-                c.send_raw(build_player_join(client.user_id, username))
+                c.send_raw(build_player_join(client.user_id, username,
+                                             client.car_id))
                 c.send_raw(build_log("%s JOINED!" % username.upper()))
 
     def _handle_add_local_player(self, sock, client: MMMConnection,
@@ -1882,17 +1893,21 @@ class MMMServer:
                 c.send_raw(build_local_player_ack(lp_id))
 
         # Roster: send PLAYER_JOIN to each in-game client so they know id->name.
+        # 0.7.2: also carry car_id per pid so clients can render the correct
+        # car model. Without this the client's lobby_players[].car_id stayed
+        # at 0 after the GAME_START wipe, making every player render as model 0.
         roster = []
         for c in ready_clients:
-            roster.append((c.game_player_id, c.username))
+            roster.append((c.game_player_id, c.username, c.car_id))
         for c in ready_clients:
             for i, ln in enumerate(c.local_player_names):
-                roster.append((c.local_player_ids[i], ln))
+                lcar = c.local_player_cars[i] if i < len(c.local_player_cars) else 0
+                roster.append((c.local_player_ids[i], ln, lcar))
         for bot in self.bots:
-            roster.append((bot.player_id, bot.name))
+            roster.append((bot.player_id, bot.name, bot.car_id))
         for c in ready_clients:
-            for rpid, rname in roster:
-                c.send_raw(build_player_join(rpid, rname))
+            for rpid, rname, rcar in roster:
+                c.send_raw(build_player_join(rpid, rname, rcar))
 
         # Spawn powerups
         for evt in self.sim.initial_powerup_spawn():

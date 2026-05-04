@@ -473,6 +473,27 @@ void mmm_online_start_race(void)
     ztClearText();
     cam_mode = saved_cam_mode;
     MNET_LOG_INFO("PHASE_E COMPLETE state->RACE_START");
+    /* Binary-version stamp: lets the server log disambiguate which client
+     * binary was actually running when each match's diagnostics were
+     * emitted. Without this we can't tell from a log whether a 0.7.1+
+     * fix is in effect for that Saturn. Update on every release. */
+    MNET_LOG_INFO("VER=0.7.2");
+    /* Log the cars assigned to each pid (post-PLAYER_JOIN re-population)
+     * so we can verify the 0.7.2 PLAYER_JOIN car_id wire-format fix
+     * actually delivered distinct cars per pid in the next test session. */
+    {
+        char dbg[80];
+        sprintf(dbg, "DIAG_CARS p0=%d p1=%d p2=%d p3=%d (sel) %d %d %d %d (lobby)",
+                (int)players[0].car_selection,
+                (int)players[1].car_selection,
+                (int)players[2].car_selection,
+                (int)players[3].car_selection,
+                (int)g_mnet.lobby_players[0].car_id,
+                (int)g_mnet.lobby_players[1].car_id,
+                (int)g_mnet.lobby_players[2].car_id,
+                (int)g_mnet.lobby_players[3].car_id);
+        MNET_LOG_INFO(dbg);
+    }
 }
 static XPDATA *xpdata_[32];
 static PDATA *pdata_LP_[32];
@@ -1514,7 +1535,26 @@ void player_collision_handling(int p)
 						if(trigger >= 10 && trigger <= 19)//checkpoint
 						{
 							int next_checkpoint;
-			
+
+							/* DIAG_TRIG — log every checkpoint trigger event for
+							 * local pids. Captures the inputs to the lap/cp
+							 * logic so we can diagnose the 0.7.1-reported
+							 * "P2 lap counter never increments" bug from one
+							 * test session. Format: pid, trigger, current_cp,
+							 * next_cp, position. The action this trigger
+							 * takes (lap+, cp_advance, reset_to_cp) is logged
+							 * separately at each branch below. */
+							if (g_online_mode && p < 4 && s_is_local[p]) {
+								char dbg[80];
+								sprintf(dbg, "DIAG_TRIG p=%d tr=%d cp=%d nx=%d x=%d z=%d",
+									p, (int)trigger,
+									(int)players[p].current_checkpoint,
+									(int)((players[p].current_checkpoint == 4) ? 1 :
+									      players[p].current_checkpoint + 1),
+									(int)players[p].x, (int)players[p].z);
+								MNET_LOG_INFO(dbg);
+							}
+
 							if(players[p].current_checkpoint == 4)
 							{
 							next_checkpoint = 1;
@@ -1522,17 +1562,23 @@ void player_collision_handling(int p)
 							{
 							next_checkpoint = players[p].current_checkpoint + 1;
 							}
-							
+
 						if(trigger - 9 == next_checkpoint || trigger - 9 == players[p].current_checkpoint)
 						{
-						
+
 							if(trigger == 10 && (players[p].current_checkpoint == 0 || players[p].current_checkpoint == 4))
 							{//START
 								if(players[p].current_time < players[p].best_time || players[p].best_time == 0)
 								{
-								players[p].best_time = players[p].current_time;	
+								players[p].best_time = players[p].current_time;
 								}
 							players[p].laps ++;
+							/* DIAG: lap-line crossing succeeded for local pid. */
+							if (g_online_mode && p < 4 && s_is_local[p]) {
+								char dbg[64];
+								sprintf(dbg, "DIAG_TRIG p=%d LAP+ -> %d", p, (int)players[p].laps);
+								MNET_LOG_INFO(dbg);
+							}
 							
 							if(game.mode == GAMEMODE_TIMEATTACK)
 							{
@@ -1619,22 +1665,42 @@ void player_collision_handling(int p)
 							stop_sounds(p);
 							//jo_audio_play_sound_on_channel(&cpoint_sound, 0);
 							pcm_play(cpoint_sound, PCM_PROTECTED, 6);
-							} 
-										
-						players[p].current_checkpoint = trigger - 9;	
-						
+							}
+
+						players[p].current_checkpoint = trigger - 9;
+						/* DIAG: cp advance for local pid. */
+						if (g_online_mode && p < 4 && s_is_local[p]) {
+							char dbg[64];
+							sprintf(dbg, "DIAG_TRIG p=%d ADV cp=%d", p, (int)players[p].current_checkpoint);
+							MNET_LOG_INFO(dbg);
+						}
+
 						//find players correct rotation based on next waypoint for respawn
 						players[p].tx = waypoints[players[p].next_waypoint].x + map_section[waypoints[players[p].next_waypoint].section].x;
 						players[p].ty = waypoints[players[p].next_waypoint].y + map_section[waypoints[players[p].next_waypoint].section].y;
 						players[p].tz = waypoints[players[p].next_waypoint].z + map_section[waypoints[players[p].next_waypoint].section].z;
-											
+
 						checkpoints[trigger-10].ry = jo_atan2f((players[p].tx - players[p].x),(players[p].tz - players[p].z)) ;
-						
-						
+
+
 						//checkpoints[trigger-10].ry = players[p].ry;
-						}else 
+						}else
 						{
-						reset_to_last_checkpoint(p);	
+						/* DIAG: invalid checkpoint progression — auto-reset.
+						 * If P2 keeps hitting this branch, that explains the
+						 * "P2 teleports to last checkpoint + lap never
+						 * increments" symptom: their cp progression is
+						 * out of sequence at every trigger. */
+						if (g_online_mode && p < 4 && s_is_local[p]) {
+							char dbg[80];
+							sprintf(dbg, "DIAG_TRIG p=%d RESET tr=%d cp=%d nx=%d (out-of-seq)",
+								p, (int)trigger,
+								(int)players[p].current_checkpoint,
+								(int)((players[p].current_checkpoint == 4) ? 1 :
+								      players[p].current_checkpoint + 1));
+							MNET_LOG_INFO(dbg);
+						}
+						reset_to_last_checkpoint(p);
 						}
 						
 						}
@@ -2133,15 +2199,44 @@ void player_collision_handling(int p)
 			}
 		}
 		if (stuck_eligible) {
+			/* DIAG_STUCK rate limiter: per-pid frame counter so we sample
+			 * once per ~2 sec of stuck-eligible time without flooding the
+			 * client_log token bucket. Safe to share with stuck_timer
+			 * since this counter only ticks while eligible. */
+			static int s_stuck_log_ctr[4] = {0, 0, 0, 0};
+			if (p < 4) s_stuck_log_ctr[p]++;
+
 			if (players[p].nextx == players[p].x &&
 			    players[p].nexty == players[p].y &&
 			    players[p].nextz == players[p].z) {
 				players[p].stuck_timer++;
 			} else {
+				/* Log the per-frame delta when the strict-equality
+				 * detector misses (i.e., player is creeping by even
+				 * one fxp unit). Captures the "oscillates side-to-side"
+				 * variant of the stuck bug. Once per ~2 sec per pid. */
+				if (g_online_mode && p < 4 && s_is_local[p] &&
+				    players[p].physics_speed == 0.0f &&
+				    (s_stuck_log_ctr[p] % 60) == 0) {
+					char dbg[96];
+					sprintf(dbg, "DIAG_STUCK p=%d nodelta? dx=%d dz=%d dy=%d adj=%d,%d",
+						p,
+						(int)(players[p].nextx - players[p].x),
+						(int)(players[p].nextz - players[p].z),
+						(int)(players[p].nexty - players[p].y),
+						(int)(players[p].physics_speed_x_adj * 100.0f),
+						(int)(players[p].physics_speed_z_adj * 100.0f));
+					MNET_LOG_INFO(dbg);
+				}
 				players[p].stuck_timer = 0;
 			}
 			if (players[p].stuck_timer >= PLAYER_STUCK_TIMER) {
 				players[p].stuck_timer = 0;
+				if (g_online_mode && p < 4 && s_is_local[p]) {
+					char dbg[64];
+					sprintf(dbg, "DIAG_STUCK p=%d FIRED -> respawn", p);
+					MNET_LOG_INFO(dbg);
+				}
 				reset_to_last_checkpoint(p);
 			}
 		} else {
@@ -5609,6 +5704,27 @@ void			my_gamepad(void)
 						(int)players[my_id].x, (int)players[my_id].z,
 						(int)(players[my_id].physics_speed * 100.0f));
 					MNET_LOG_INFO(dbg);
+
+					/* DIAG_P2 HB — mirror of DIAG_P1 HB for the local-coop
+					 * P2 slot. Required to diagnose the 0.7.1-reported
+					 * "P2 lap counter never increments" bug — the previous
+					 * builds had no per-frame P2 state log so we couldn't
+					 * tell from logs whether P2 was reaching the start
+					 * line, what their lap/checkpoint progression looked
+					 * like, or where they actually were in world coords. */
+					if (g_local_p2_active &&
+					    g_mnet.my_player_id_2 != MNET_INVALID_PLAYER_ID &&
+					    g_mnet.my_player_id_2 < MNET_MAX_PLAYERS &&
+					    (int)g_mnet.my_player_id_2 < game.players) {
+						uint8_t p2 = g_mnet.my_player_id_2;
+						sprintf(dbg, "DIAG_P2 HB f=%d lap=%d cp=%d x=%d z=%d spd=%d",
+							s_diag_frame_ctr,
+							(int)players[p2].laps,
+							(int)players[p2].current_checkpoint,
+							(int)players[p2].x, (int)players[p2].z,
+							(int)(players[p2].physics_speed * 100.0f));
+						MNET_LOG_INFO(dbg);
+					}
 
 					/* DIAG_SYNC — per-pid receive counters and freshness for
 					 * each non-local remote player. Drives sync fine-tuning:

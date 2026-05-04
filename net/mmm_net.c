@@ -547,9 +547,19 @@ static void process_player_join(const uint8_t* payload, int len)
         g_mnet.lobby_players[target].id = pid;
         g_mnet.lobby_players[target].active = true;
         if (len >= 3) {
-            mnet_read_string(&payload[2], len - 2,
+            int name_consumed = mnet_read_string(&payload[2], len - 2,
                              g_mnet.lobby_players[target].name,
                              MNET_MAX_NAME + 1);
+            /* 0.7.2: server now appends car_id after the name string. Older
+             * 0.7.1 server omits it; in that case name_consumed == len-2 and
+             * we leave car_id at whatever it was (typically 0 from the
+             * GAME_START memset, which is the pre-0.7.2 behavior). */
+            if (name_consumed > 0) {
+                int off = 2 + name_consumed;
+                if (off < len) {
+                    g_mnet.lobby_players[target].car_id = payload[off];
+                }
+            }
         }
         if (target >= g_mnet.lobby_count) g_mnet.lobby_count = target + 1;
     }
