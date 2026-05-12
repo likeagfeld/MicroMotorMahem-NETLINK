@@ -365,39 +365,39 @@ Archive member included to satisfy reference by file (symbol)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_fpcmp_parts_df.o)
                               /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_eq_df.o) (__fpcmp_parts_d)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_movmem.o)
-                              /tmp/ccxTIe74.ltrans1.ltrans.o (__movmemSI12)
+                              /tmp/ccGsAeBC.ltrans1.ltrans.o (__movmemSI12)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__addsf3)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__addsf3)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_mul_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__mulsf3)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__mulsf3)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_div_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__divsf3)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__divsf3)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_eq_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__eqsf2)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__eqsf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_ne_sf.o)
-                              /tmp/ccxTIe74.ltrans1.ltrans.o (__nesf2)
+                              /tmp/ccGsAeBC.ltrans1.ltrans.o (__nesf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_gt_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__gtsf2)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__gtsf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_ge_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__gesf2)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__gesf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_lt_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__ltsf2)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__ltsf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_le_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__lesf2)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__lesf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_si_to_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__floatsisf)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__floatsisf)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_sf_to_si.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__fixsfsi)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__fixsfsi)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_sf_to_df.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__extendsfdf2)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__extendsfdf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_thenan_sf.o)
                               /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o) (__thenan_sf)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_usi_to_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__floatunsisf)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__floatunsisf)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_make_df.o)
                               /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_sf_to_df.o) (__make_dp)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_df_to_sf.o)
-                              /tmp/ccxTIe74.ltrans0.ltrans.o (__truncdfsf2)
+                              /tmp/ccGsAeBC.ltrans0.ltrans.o (__truncdfsf2)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_pack_sf.o)
                               /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o) (__pack_f)
 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_unpack_sf.o)
@@ -438,7 +438,7 @@ SLSTART         0x0000000006004000       0x30
 .text           0x0000000006004040    0x20480
  *(.text)
  .text          0x0000000006004040        0x0 /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
- .text          0x0000000006004040     0x86bc /tmp/ccxTIe74.ltrans0.ltrans.o
+ .text          0x0000000006004040     0x86bc /tmp/ccGsAeBC.ltrans0.ltrans.o
                 0x00000000060044f0                jo_sprite_draw.constprop.53
                 0x00000000060045fc                jo_nbg2_print.constprop.38
                 0x0000000006004660                render_CLUT_sprite_MESH.constprop.37
@@ -492,7 +492,7 @@ SLSTART         0x0000000006004000       0x30
                 0x000000000600c430                modem_dial.lto_priv.623
                 0x000000000600c4d4                modem_init.lto_priv.627
                 0x000000000600c578                modem_probe.lto_priv.625
- .text          0x000000000600c6fc     0xa1ec /tmp/ccxTIe74.ltrans1.ltrans.o
+ .text          0x000000000600c6fc     0xa1ec /tmp/ccGsAeBC.ltrans1.ltrans.o
                 0x000000000600cde0                my_vblank
                 0x000000000600d024                set_palette
                 0x000000000600d03c                change_player_palette
@@ -1295,7 +1295,7 @@ SLSTART         0x0000000006004000       0x30
                 0x00000000060244b4                __etext = .
 
 .text.startup   0x00000000060244c0      0xb80
- .text.startup  0x00000000060244c0      0xb7c /tmp/ccxTIe74.ltrans0.ltrans.o
+ .text.startup  0x00000000060244c0      0xb7c /tmp/ccGsAeBC.ltrans0.ltrans.o
                 0x00000000060244c0                main
 
 SLPROG          0x0000000006025040    0x158a0
@@ -1698,7 +1698,7 @@ SLPROG          0x0000000006025040    0x158a0
 .data           0x000000000603a8e0     0xe530
  *(.data)
  .data          0x000000000603a8e0        0x0 /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
- .data          0x000000000603a8e0     0xb670 /tmp/ccxTIe74.ltrans0.ltrans.o
+ .data          0x000000000603a8e0     0xb670 /tmp/ccGsAeBC.ltrans0.ltrans.o
                 0x0000000006043f60                xpdata_P8_CAR
                 0x0000000006043f78                xpdata_P7_CAR
                 0x0000000006043f90                xpdata_P6_CAR
@@ -1858,7 +1858,7 @@ SLPROG          0x0000000006025040    0x158a0
                 0x0000000006045f28                __jo_b1.lto_priv.607
                 0x0000000006045f2c                __jo_sprite_pos
                 0x0000000006045f38                __jo_sprite_attributes
- .data          0x0000000006045f50     0x289c /tmp/ccxTIe74.ltrans1.ltrans.o
+ .data          0x0000000006045f50     0x289c /tmp/ccGsAeBC.ltrans1.ltrans.o
  *fill*         0x00000000060487ec        0x4 
  .data          0x00000000060487f0        0x0 /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A(sys_exit.o)
  .data          0x00000000060487f0        0x0 /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A(sys_sub.o)
@@ -2070,7 +2070,7 @@ SLPROG          0x0000000006025040    0x158a0
 
 .rodata         0x0000000006048e20     0x1100
  *(.rodata)
- .rodata        0x0000000006048e20      0xb30 /tmp/ccxTIe74.ltrans0.ltrans.o
+ .rodata        0x0000000006048e20      0xb30 /tmp/ccGsAeBC.ltrans0.ltrans.o
                 0x0000000006048e2a                sfx_volume
                 0x0000000006048e2c                survival_preview
                 0x0000000006048e30                shadow_colour
@@ -2087,7 +2087,7 @@ SLPROG          0x0000000006025040    0x158a0
                 0x0000000006049734                __jo_rbg0_r_table.lto_priv.604
                 0x0000000006049738                __jo_back_color.lto_priv.603
                 0x000000000604994c                __jo_gouraud_shading_runtime_index
- .rodata        0x0000000006049950       0xbc /tmp/ccxTIe74.ltrans1.ltrans.o
+ .rodata        0x0000000006049950       0xbc /tmp/ccGsAeBC.ltrans1.ltrans.o
  .rodata        0x0000000006049a0c       0x10 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_thenan_sf.o)
                 0x0000000006049a0c                __thenan_sf
  .rodata        0x0000000006049a1c        0x4 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-impure.o)
@@ -2108,28 +2108,28 @@ SLPROG          0x0000000006025040    0x158a0
 
 .rodata.str1.4  0x0000000006049f20     0x18e0
  .rodata.str1.4
-                0x0000000006049f20      0xb45 /tmp/ccxTIe74.ltrans0.ltrans.o
+                0x0000000006049f20      0xb45 /tmp/ccGsAeBC.ltrans0.ltrans.o
  *fill*         0x000000000604aa65        0x3 
  .rodata.str1.4
-                0x000000000604aa68      0xd01 /tmp/ccxTIe74.ltrans1.ltrans.o
- *fill*         0x000000000604b769        0x3 
+                0x000000000604aa68      0xcfd /tmp/ccGsAeBC.ltrans1.ltrans.o
+ *fill*         0x000000000604b765        0x3 
  .rodata.str1.4
-                0x000000000604b76c       0x3a /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-svfprintf.o)
- *fill*         0x000000000604b7a6        0x2 
+                0x000000000604b768       0x3a /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-svfprintf.o)
+ *fill*         0x000000000604b7a2        0x2 
  .rodata.str1.4
-                0x000000000604b7a8       0x12 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-dtoa.o)
- *fill*         0x000000000604b7ba        0x2 
+                0x000000000604b7a4       0x12 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-dtoa.o)
+ *fill*         0x000000000604b7b6        0x2 
  .rodata.str1.4
-                0x000000000604b7bc       0x12 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-locale.o)
- *fill*         0x000000000604b7ce        0x2 
+                0x000000000604b7b8       0x12 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-locale.o)
+ *fill*         0x000000000604b7ca        0x2 
  .rodata.str1.4
-                0x000000000604b7d0       0x25 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-svfiprintf.o)
+                0x000000000604b7cc       0x25 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/../../../../sh-none-elf/lib/libc.a(lib_a-svfiprintf.o)
 
 .bss            0x000000000604b800    0x6e9c8
                 0x000000000604b800                __bstart = .
  *(.bss)
  .bss           0x000000000604b800        0x0 /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
- .bss           0x000000000604b800    0x6e880 /tmp/ccxTIe74.ltrans0.ltrans.o
+ .bss           0x000000000604b800    0x6e880 /tmp/ccGsAeBC.ltrans0.ltrans.o
                 0x000000000604b800                show_debug.lto_priv.580
                 0x000000000604b801                is_cd_playing
                 0x000000000604b802                target_player
@@ -2187,7 +2187,7 @@ SLPROG          0x0000000006025040    0x158a0
                 0x000000000604d27c                __jo_sprintf_buf
                 0x000000000604d2bc                __jo_sprite_pic
                 0x000000000604dab4                __jo_sprite_def
- .bss           0x00000000060ba080       0xda /tmp/ccxTIe74.ltrans1.ltrans.o
+ .bss           0x00000000060ba080       0xda /tmp/ccGsAeBC.ltrans1.ltrans.o
  *fill*         0x00000000060ba15a        0x6 
  .bss           0x00000000060ba160        0x4 /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A(sys_exit.o)
  *fill*         0x00000000060ba164        0xc 
@@ -2414,8 +2414,8 @@ SLPROG          0x0000000006025040    0x158a0
                 0x00000000060ba1c8                __bend = .
                 0x00000000060ba1c8                _end = .
 LOAD /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SGLAREA.O
-LOAD /tmp/ccxTIe74.ltrans0.ltrans.o
-LOAD /tmp/ccxTIe74.ltrans1.ltrans.o
+LOAD /tmp/ccGsAeBC.ltrans0.ltrans.o
+LOAD /tmp/ccGsAeBC.ltrans1.ltrans.o
 LOAD /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/SEGA_SYS.A
 LOAD /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/LIBCD.A
 LOAD /joengine/Compiler/COMMON/SGL_302j/LIB_ELF/LIBSGL.A
@@ -2428,8 +2428,8 @@ LOAD /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc-Os-4-200.a
 OUTPUT(game.elf coff-sh)
 
 .comment        0x0000000000000000      0x590
- .comment       0x0000000000000000       0x12 /tmp/ccxTIe74.ltrans0.ltrans.o
- .comment       0x0000000000000012       0x12 /tmp/ccxTIe74.ltrans1.ltrans.o
+ .comment       0x0000000000000000       0x12 /tmp/ccGsAeBC.ltrans0.ltrans.o
+ .comment       0x0000000000000012       0x12 /tmp/ccGsAeBC.ltrans1.ltrans.o
  .comment       0x0000000000000024       0x12 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_addsub_sf.o)
  .comment       0x0000000000000036       0x12 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_mul_sf.o)
  .comment       0x0000000000000048       0x12 /joengine/Compiler/LINUX/bin/../lib/gcc/sh-none-elf/8.2.0/libgcc.a(_div_sf.o)

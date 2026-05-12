@@ -494,7 +494,7 @@ void mmm_online_start_race(void)
      * binary was actually running when each match's diagnostics were
      * emitted. Without this we can't tell from a log whether a 0.7.1+
      * fix is in effect for that Saturn. Update on every release. */
-    MNET_LOG_INFO("VER=0.7.2");
+    MNET_LOG_INFO("VER=0.8");
     /* Log the cars assigned to each pid (post-PLAYER_JOIN re-population)
      * so we can verify the 0.7.2 PLAYER_JOIN car_id wire-format fix
      * actually delivered distinct cars per pid in the next test session. */
