@@ -2,6 +2,29 @@
 
 Mid-test diagnostic release, **third iteration of 0.7.2**. Four more code-traced fixes from the 5/4 PT 21:28 multi-human session log (TOAST + FARKUS, race went 5+ laps before ending, jitter, random respawns). Per user direction the version stays at 0.7.2 and the tag/release moves forward in place each iteration until told to advance.
 
+## What's new in iter-4
+
+User report: with 2 humans + 1 remote it looks fine; with 3+ players "sometimes looked like one or all of the opponents weren't driving even though everyone reported being able to drive". Plus "tire screeching sound effect persisted after a game ended while in the lobby". Both bugs traced data-drivenly from the 5/4 21:28 multi-human session logs.
+
+**1. Remote players appear sluggish/frozen with 3+ players** — code-traced to my iter-3 lerp's interaction with the existing `players[op].physics_speed = (float)rs->speed / 256.0f;` override in the PLAYER_SYNC consumer. In iter-2 snap-only mode the override was harmless (position snap dominated motion); in iter-3 lerp mode the override caps local physics' ability to accelerate remote pids — every frame `physics_speed` gets RESET to the server's lagging speed report, preventing `physics_accelerate_forwards` (+0.46/frame from `cpu_gas=true` via INPUT_RELAY) from compounding. **Fix:** drop the override entirely; local physics owns `physics_speed` for remote pids now, driven by `cpu_*` flags. Server's authoritative position (lerp) and game state (lap/cp/wp) still flow normally.
+
+**2. Tire screech persisting into lobby** — code-traced to `players[p].drift_sound` being a `PCM_ALT_LOOP` and the gameplay loop being the only place that calls `pcm_cease(drift_sound)` when drift conditions clear. When the race-end transition fires (`game_state = GAMESTATE_END_LEVEL`), the gameplay loop stops running, so any loop sound that was active at race-end keeps playing. **Fix:** call `stop_sounds(p)` for all active player slots on the race-end transition.
+
+**3. PLAYER_SYNC wire-format trim 19→16 bytes (conservative)** — for the 3+ player bandwidth-pressure scenario the user reported. 2P at 380 B/s was comfortable on the modem; 3P at 570 B/s started pushing against effective V.34 throughput. With `speed` dropped from wire (no reader after fix #1) and `dist_wp` quantized to u8 (HUD-only progress display, 4-unit precision well below visual threshold), 3P drops to 480 B/s — meaningful headroom restored. Positions and heading (x, y, z, ry) kept at full int16 — no visual regression on remote cars. Atomic deployment: server emits new format, client decodes; both shipped in this v0.7.2 force-push.
+
+**4. New diagnostic — `DIAG_SYNC_STALE pid=N age=N ENTER/EXIT`** — edge-triggered log fires when a remote pid's PLAYER_SYNC age exceeds 30 frames (~500 ms) and again when it clears below 5 frames. The existing 60-frame DIAG_SYNC heartbeat couldn't catch transient sync drops between samples; this captures the actual "frozen for ~500ms" event if it recurs after this iter's fixes, so the next test session's logs prove (or refute) whether the speed-override theory was the full story.
+
+### Bandwidth math after iter-4 (modem capacity 1440 B/s):
+
+| Players | iter-3 (19B/sync) | iter-4 (16B/sync) | Headroom on 1440 |
+|---|---|---|---|
+| 2 | 380 B/s | 320 B/s | 78% free |
+| 3 | 570 B/s | 480 B/s | 67% free |
+| 4 | 760 B/s | 640 B/s | 56% free |
+| 6 | 1140 B/s | 960 B/s | 33% free |
+
+Scales cleanly through 6 players.
+
 ## What's new in iter-3
 
 **1. Race-finish 21-second delay** — server's "Race finished!" fired at 21:30:21 but TOAST received RACE_FINISH at 21:30:42 and FARKUS at 21:31:06 (45 seconds later). Server kept hammering PLAYER_SYNC at 10 Hz × 3 pids during those seconds, queueing ahead of RACE_FINISH at the modem bottleneck. Both clients kept driving locally during the queue drain — that's why FARKUS reported "I was over 5 laps on my side". **Fix:** server's `_game_tick` now gates PLAYER_SYNC broadcast on `not self.sim.race_finished`. After race-end the queue drains immediately, RACE_FINISH arrives within ~50 ms.

@@ -504,13 +504,40 @@ def build_player_sync(player_id: int, x: int, y: int, z: int,
                       ry: int, speed: int,
                       lap: int, checkpoint: int, cur_wp: int,
                       dist_wp: int) -> bytes:
-    """[pid:1][x:2s BE][y:2s BE][z:2s BE][ry:2s BE][speed:2s BE][lap:1][cp:1][cur_wp:1][dist_wp:2 BE]"""
+    """0.7.2 iter 4 — conservative wire-format trim from 19B to 16B wire.
+
+    Wire (14B payload + 2B LEN = 16B total per snapshot):
+      [op:1=0xA9][pid:1]
+      [x:2s BE][y:2s BE][z:2s BE][ry:2s BE]      # positions/heading: full int16
+      [lap:1][cp:1][wp:1]                         # discrete game state
+      [dist_wp_q:1u]                              # u8 = u16 >> 2 (4-unit precision)
+
+    Drops vs iter-3:
+    - `speed` (2 bytes): no longer read on client after iter-4 removal of
+      the `players[op].physics_speed = rs->speed / 256` override. Local
+      physics now drives speed for remote pids via INPUT_RELAY cpu_*
+      flags. Zero readers = safe to drop from wire.
+    - `dist_wp` 2 bytes → 1 byte (>>2 shift, 4-unit precision): client
+      only uses dist_wp for HUD progress; below visual threshold for a
+      progress bar.
+
+    Positions/heading kept at full int16 — y range can hit ±576 during
+    ramp jumps (player_high_bounce), can't quantize safely; ry visible
+    jitter risk at 1.4° u8 resolution.
+
+    Bandwidth math (modem 1440 B/s capacity):
+      2P: 380 → 320 B/s
+      3P: 570 → 480 B/s   ← addresses the user-reported 3+P "frozen
+                            opponents" symptom (matches bandwidth-pressure
+                            signature: 2P works, 3P+ breaks)
+      4P: 760 → 640 B/s
+      6P: 1140 → 960 B/s  (still under modem, scales beyond 4P)
+    """
     payload = bytes([MNET_MSG_PLAYER_SYNC, player_id & 0xFF])
-    payload += struct.pack("!hhhhh",
-                           s16(x), s16(y), s16(z),
-                           s16(ry), s16(speed))
+    payload += struct.pack("!hhhh", s16(x), s16(y), s16(z), s16(ry))
     payload += bytes([lap & 0xFF, checkpoint & 0xFF, cur_wp & 0xFF])
-    payload += struct.pack("!H", u16(dist_wp))
+    dist_wp_q = min(255, u16(dist_wp) >> 2)
+    payload += bytes([dist_wp_q & 0xFF])
     return encode_frame(payload)
 
 

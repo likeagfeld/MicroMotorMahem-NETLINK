@@ -405,8 +405,16 @@ static void process_player_sync(const uint8_t* payload, int len)
     uint8_t pid;
     mnet_remote_state_t* rs;
 
-    /* [type:1][pid:1][x:2][y:2][z:2][ry:2][speed:2][lap:1][cp:1][cur_wp:1][dist_wp:2] = 17 */
-    if (len < 17) return;
+    /* 0.7.2 iter 4 wire format (14B payload):
+     *   [op:1][pid:1][x:2][y:2][z:2][ry:2][lap:1][cp:1][cur_wp:1][dist_wp_q:1]
+     * Drops vs iter-3:
+     *   - `speed` (2 bytes): no longer read on client after iter-4 removal
+     *     of the physics_speed override; local physics owns it for remote
+     *     pids via INPUT_RELAY cpu_* flags
+     *   - `dist_wp` shrunk 2 → 1 byte with >>2 shift (HUD-only, 4-unit
+     *     precision well below visual threshold)
+     */
+    if (len < 14) return;
 
     pid = payload[1];
     if (pid >= MNET_MAX_PLAYERS) return;
@@ -422,11 +430,11 @@ static void process_player_sync(const uint8_t* payload, int len)
     rs->y = read_i16(&payload[4]);
     rs->z = read_i16(&payload[6]);
     rs->ry = read_i16(&payload[8]);
-    rs->speed = read_i16(&payload[10]);
-    rs->lap = payload[12];
-    rs->checkpoint = payload[13];
-    rs->cur_wp = payload[14];
-    rs->dist_wp = read_u16(&payload[15]);
+    rs->speed = 0;  /* dropped from wire; not used on client */
+    rs->lap = payload[10];
+    rs->checkpoint = payload[11];
+    rs->cur_wp = payload[12];
+    rs->dist_wp = ((uint16_t)payload[13]) << 2;  /* dequantize >>2 → <<2 */
     rs->last_sync_frame = (uint16_t)g_mnet.frame_count;
     g_mnet.diag_rx_player_sync[pid]++;
     g_mnet.diag_last_sync_frame[pid] = (uint16_t)g_mnet.local_frame;

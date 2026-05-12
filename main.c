@@ -5721,6 +5721,18 @@ void			my_gamepad(void)
 		g_mnet.race_finished = false;
 		game.race_end_timer = RACE_END_TIMER;
 		game.game_state = GAMESTATE_END_LEVEL;
+		/* 0.7.2 iter 4 — stop per-player PCM loops on race-end so the
+		 * drift / engine / siren sounds don't persist into the lobby.
+		 * User-reported: "tire screeching sound effect persisted after
+		 * a game ended while in the lobby". stop_sounds() ceases all
+		 * per-player PCM channels (drift_sound at PCM_ALT_LOOP, engine,
+		 * horn, siren). Call for every active player slot. */
+		{
+			int sp;
+			for (sp = 0; sp < game.players && sp < MNET_MAX_PLAYERS; sp++) {
+				stop_sounds(sp);
+			}
+		}
 	}
 
 	if (g_online_mode && game.game_state == GAMESTATE_GAMEPLAY) {
@@ -5881,6 +5893,34 @@ void			my_gamepad(void)
 			rs = mnet_get_remote_state(net_id);
 			if (!rs) continue;
 
+			/* DIAG_SYNC_STALE — fire when a remote pid's last sync age
+			 * crosses the 30-frame threshold (= ~500 ms). This captures
+			 * the actual "frozen opponent" event the user reported in
+			 * the 5/4 21:28 multi-player session. The existing
+			 * DIAG_SYNC heartbeat only samples every 60 frames so brief
+			 * stale windows are invisible to the log. Edge-trigger: log
+			 * once on threshold crossing, again when it clears. */
+			{
+				int age = (int)((uint16_t)g_mnet.local_frame -
+				                g_mnet.diag_last_sync_frame[net_id]);
+				static uint8_t s_stale_state[MNET_MAX_PLAYERS] = {0,0,0,0};
+				if (net_id < MNET_MAX_PLAYERS) {
+					if (age > 30 && s_stale_state[net_id] == 0) {
+						char dbg[64];
+						sprintf(dbg, "DIAG_SYNC_STALE pid=%d age=%d ENTER",
+							(int)net_id, age);
+						MNET_LOG_INFO(dbg);
+						s_stale_state[net_id] = 1;
+					} else if (age <= 5 && s_stale_state[net_id] == 1) {
+						char dbg[64];
+						sprintf(dbg, "DIAG_SYNC_STALE pid=%d age=%d EXIT",
+							(int)net_id, age);
+						MNET_LOG_INFO(dbg);
+						s_stale_state[net_id] = 0;
+					}
+				}
+			}
+
 			dx = (int)rs->x - (int)players[op].x;
 			dy = (int)rs->y - (int)players[op].y;
 			dz = (int)rs->z - (int)players[op].z;
@@ -5912,7 +5952,24 @@ void			my_gamepad(void)
 				players[op].ry += (Sint16)((dry >> 2) ? (dry >> 2) : sry);
 			}
 
-			players[op].physics_speed = (float)rs->speed / 256.0f;
+			/* 0.7.2 iter 4 — do NOT override physics_speed from sync.
+			 * Local physics for remote players is driven by cpu_* flags
+			 * set from INPUT_RELAY each tick. Resetting physics_speed to
+			 * the server's lagging report every frame caps the local
+			 * physics' ability to accelerate the remote car — symptom
+			 * was the iter-3-reported "sometimes looked like one or all
+			 * opponents weren't driving even though everyone reported
+			 * being able to drive". With iter-2 snap-only sync the
+			 * override was harmless (position snap overwrote any local
+			 * speed-derived motion); with iter-3 lerp, position
+			 * accumulates between snaps so local physics' physics_speed
+			 * must be free to climb via local accel from cpu_gas. The
+			 * `speed` field in PLAYER_SYNC is still used implicitly via
+			 * position lerping (server's broadcast x/y already
+			 * incorporates server's speed in its simulation). HUD speed
+			 * display for remote players is not shown anywhere in the
+			 * MMM HUD path so removing this override has no visible
+			 * effect besides removing the accel-cap bug. */
 			players[op].laps = rs->lap;
 			players[op].current_checkpoint = rs->checkpoint;
 			players[op].current_waypoint = rs->cur_wp;
